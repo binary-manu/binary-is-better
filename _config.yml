@@ -22,7 +22,7 @@ title: Binary is better
 author: Emanuele Giacomelli
 description: >- # this means to ignore newlines until "baseurl:"
     Personal notes about my software developer things
-baseurl: "/blog" # the subpath of your site, e.g. /blog
+baseurl: "/binary-is-better" # the subpath of your site, e.g. /blog
 url: "https://binary-manu.github.com" # the base hostname & protocol for your site, e.g. http://example.com
 
 # Build settings
