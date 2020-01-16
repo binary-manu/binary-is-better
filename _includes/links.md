@@ -1,1 +1,0 @@
-[my-github]: https://github.com/binary-manu

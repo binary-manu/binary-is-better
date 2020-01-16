@@ -4,9 +4,10 @@ layout: post
 title:  "Rules for object file extraction from ELF archives"
 date:   2020-01-13 12:04:48 +0100
 categories: ELF
-
-oracle_linker: "[Oracle's Linker Guide][oracle-linker]"
 ---
+{% capture oracle_linker -%}
+[Oracle's Linker Guide]({{ site.data.links.oracle_linker }})
+{%- endcapture %}
 
 # Rules for object file extraction from ELF archives
 
@@ -24,8 +25,8 @@ process.
 
 The situation is a little more complex than what the wording above may
 indicate. This is mainly because there is some confusion about what a
-_defined symbol_ actually is. If we refer to {{ page.oracle_linker }},
-we'll notice that, for the purpose of link editing, symbols may fall in
+_defined symbol_ actually is. If we refer to {{ oracle_linker }},
+we'll notice that, for the purpouse of link editing, symbols may fall in
 3 different classes:
 
 * __undefined__ symbols are easy: they give the name of a symbol we want
@@ -197,5 +198,3 @@ cases in the archive. This is what happened:
 The following table details the description above by listing every case:
 
 {% include elf_ar_extract.html %}
-
-[oracle-linker]: https://docs.oracle.com/cd/E19253-01/817-1984/index.html
