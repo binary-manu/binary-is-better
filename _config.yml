@@ -24,6 +24,7 @@ description: >- # this means to ignore newlines until "baseurl:"
     Personal notes about my software developer things
 baseurl: "/binary-is-better" # the subpath of your site, e.g. /blog
 url: "https://binary-manu.github.com" # the base hostname & protocol for your site, e.g. http://example.com
+email: "binary-is-better@altmails.com"
 
 # Build settings
 theme: minima
