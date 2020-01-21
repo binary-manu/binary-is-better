@@ -67,7 +67,7 @@ we'll notice that, for the purpouse of link editing, symbols may fall in
   usually end up into the BSS, to avoid wasting precious bytes from the
   data section.
 
-  Conversely, if the linker founds a defined symbol with the same name
+  Conversely, if the linker finds a defined symbol with the same name
   somewhere in a different object file, the tentative definition is
   ignored and the defined symbol replaces it.
 
@@ -97,6 +97,43 @@ must choose between a weak and a global symbol, it will choose the
 latter. Also, weak symbols get special treatment when static libraries
 are involved: no file is extracted from a library if its only use would
 be satisfying a weak symbol.
+
+I have noticed that _weak tentative_ symbols are somewhat a mysterious
+entity. In fact, it seems that compilers refuse to emit them.  Consider
+a simple global undefined C variable like this:
+
+    int foo;
+
+If we compile a file containing just this definition and read its symbol
+table, we get:
+
+     7: 0000000000000004     4 OBJECT  GLOBAL DEFAULT  COM foo
+
+Which is perfectly fine, as our tentative C definition produced a COMMON
+global symbol, whose section index is `SHN_COMMON`. Now, let's try again
+with:
+
+    #pragma weak foo
+    int foo;
+
+This time we get:
+
+    7: 0000000000000000     4 OBJECT  WEAK   DEFAULT    3 foo
+
+What? The symbol ended up into a real section, so clearly this is not a
+common symbol. If we take a look at the sections we find:
+
+    [ 3] .bss              NOBITS           0000000000000000  00000040
+    0000000000000004  0000000000000000  WA       0     0     4
+
+So the symbol actually ended up into the BSS. This was to be expected,
+since undefined globals in C are initialized to 0 and storing them into
+the BSS saves space. However, we may have expected a symbol with weak
+binding and `SHN_COMMON` section index. This is not the case. The
+resulting symbol is undistinguishable from a zero-initialized C global
+variable. So, when we talk about _weak tentative_ symbols in the rest of
+this article, we should remember that such symbols are technically
+equivalent to weak defined symbols.
 
 Now back to static libraries. What makes the documentation ambiguous is
 that it uses the expression "defined symbol" in a somewhat unclear way.
