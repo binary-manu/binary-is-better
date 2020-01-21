@@ -156,9 +156,16 @@ Basically, we have a link command like this:
 where `lib.a` holds a file `second.o`, and both `first.o` and `second.o`
 mention a symbol with the same name.
 
-In the discussion that follow, `ld` refers to GNU `ld`. WHile it is just
+In the discussion that follow, `ld` refers to GNU `ld`. While it is just
 an implementation of an ELF linker, it is widespread enough that it can
-be used to check what actually happens in some corner cases.
+be used to check what actually happens in some corner cases. I also test
+`gold`, which is also shipped alongside the GNU binutils. The versions
+used for the tests are:
+
+    $ LANG=C ld -v
+    GNU ld (GNU Binutils) 2.33.1
+    $ LANG=C ld.gold -v
+    GNU gold (GNU Binutils 2.33.1) 1.16
 
 I have tried matching all symbol cases (weak/global
 undefined/tentative/defined) in the relocatable file against all symbol
@@ -180,8 +187,8 @@ cases in the archive. This is what happened:
   if it provies a tentative or defined symbol. The binding of the symbol
   in the archived file is irrelevant.
 * if the symbol in `first.o` is tentative (and, again, has global
-  binding), `second.o` is pulled only if its symbol is defined
-  and has global binding.
+  binding), `second.o` is pulled only if its symbol is defined and has
+  global binding. `gold` does not extract the file in this case.
 
 The following table details the description above by listing every case:
 
