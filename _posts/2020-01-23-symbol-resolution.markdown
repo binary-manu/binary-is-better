@@ -142,5 +142,5 @@ Now, let's see how symbols are resolved:
       * otherwise no symbol is emitted in the output file and the symbol
         from the leftmost DSO wins.
 
-[elf-ar-post]: {{ site.baseurl }}/{% post_url 2020-01-13-rules-for-object-file-extraction-from-elf-archives %}
+[elf-ar-post]: {{ site.baseurl }}{% post_url 2020-01-13-rules-for-object-file-extraction-from-elf-archives %}
 [oracle-linker]: https://docs.oracle.com/cd/E19253-01/817-1984/chapter2-93321/index.html
