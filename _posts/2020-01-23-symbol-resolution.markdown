@@ -2,7 +2,6 @@
 # vi: set tw=72 et sw=2 sts=-1 autoindent fo=troqan :
 title:  "ELF link-time symbol resolution"
 categories: ELF
-elf_ar_post_title: "Rules for object file extraction from ELF archives"
 ---
 # ELF link-time symbol resolution
 
@@ -143,6 +142,5 @@ Now, let's see how symbols are resolved:
       * otherwise no symbol is emitted in the output file and the symbol
         from the leftmost DSO wins.
 
-{% assign post = site.posts | where: "title", page.elf_ar_post_title %}
-[elf-ar-post]: {{ post[0].url | relative_url }}
+[elf-ar-post]: {{ site.baseurl }}/{% post_url 2020-01-13-rules-for-object-file-extraction-from-elf-archives %}
 [oracle-linker]: https://docs.oracle.com/cd/E19253-01/817-1984/chapter2-93321/index.html
