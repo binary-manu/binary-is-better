@@ -1,6 +1,5 @@
 ---
 # vi: set tw=72 et sw=2 sts=-1 autoindent fo=troqan :
-layout: post
 title:  "Rules for object file extraction from ELF archives"
 date:   2020-01-13 12:04:48 +0100
 categories: ELF
