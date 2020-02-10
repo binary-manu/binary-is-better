@@ -1,0 +1,174 @@
+---
+# vi: set tw=72 et sw=2 sts=-1 autoindent fo=troqan :
+title:  Access USB devices from unprivileged Docker containers
+categories: Docker
+---
+# {{ page.title }}
+
+Sometimes, a conteinerized application may need to access devices from
+the host. For example, we might be testing serial console tools inside a
+container, and need to pass the device node for our serial port to the
+container, for example `/dev/ttyUSB0`.
+
+When using Docker, we can request a single device to be made available
+within the container by using the `--device` options of the ~run`
+command. This way that device node, and only that, is passed to the
+container and made accessible.
+
+In some cases, passing single device nodes may ne unsuitable. A typical
+case is allowing a tool to access devices which can appear and disappear
+and thus change name. Let's say, in out previous example, that I start
+with a serial converter mapped to `/dev/ttyUSB0`, then it gets
+unplugged, a different serial device is plugged in and the the original
+device is reattached. At this point the once-`ttyUSB0` has become
+`/dev/ttyUSB1`, which is not available to the container.
+
+A potential solution is to deploy a udev rule that gives the device node
+a fixed name, base don some attribute of the device (such as its vendor
+id or product id).
+
+There is a case, however, which cannot be easily covered by udev rules:
+USB devices. The kernel provides devices nodes for USB peripherals under
+`/dev/bus/usb`. Each time a device is removed and attached, a new device
+node is created, but its name is always changing.
+
+For example, this is my `/dev/bus/usb` right now:
+
+    /dev/bus/usb
+    ├── 001
+    │   ├── 001
+    │   ├── 002
+    │   └── 003
+    [skip]
+    ├── 005
+    │   ├── 001
+    │   ├── 002
+    │   ├── 003
+    │   ├── 004
+    │   └── 005
+    [skip]
+
+Now, let me detach and reattach my USB mouse dongle, and let's take a
+snapshot of that directory again:
+
+    /dev/bus/usb
+    ├── 001
+    │   ├── 001
+    │   ├── 002
+    │   └── 003
+    [skip]
+    ├── 005
+    │   ├── 001
+    │   ├── 002
+    │   ├── 003
+    │   ├── 005
+    │   └── 006
+    [skip]
+
+As you may notice, the device `005/004` has been renamed `005/006`. A
+quick look at what `lsusb` has to say confirms that it is actually my
+mouse.
+
+Again, we are in a situation where no single device can be passed. So we
+have to resort to something more... brutal. If we cannot pass a single
+device node, we can pass the entire `/dev/bus/usb` folder to the
+container. This is pretty easy to do using bind mounts:
+
+    $ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
+        ubuntu:bionic ls /dev/bus/usb
+
+    001  002  003  004  005  006  007  008
+
+Let's check that without the bind mount that path does not exist:
+
+    $ docker run -it --rm \
+        ubuntu:bionic ls /dev/bus/usb
+
+    ls: cannot access '/dev/bus/usb': No such file or directory
+
+OK, so far so good. Let's check the permissions of one of those devices:
+
+    $ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
+        ubuntu:bionic ls -lh /dev/bus/usb/005/007
+
+    crw-rw-r-- 1 root root 189, 518 Feb 10 20:02 /dev/bus/usb/005/007
+
+It's root owned and has read/write permissions for the owner. This is
+good, so our root user inside tyhe container can access it even if it
+doesn't posses the `CAP_DAC_OVERRIDE` capability.
+
+To verify if we can access it, let's try to open the device for reading:
+
+    $ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
+        ubuntu:bionic \
+        dd if=/dev/bus/usb/005/007 bs=1 count=0
+
+    dd: failed to open '/dev/bus/usb/005/007': Operation not permitted
+
+Now, this is weird. The device node can be accessed from the container,
+it the right permissions and file owner. But we cannot open it. Why?
+
+After some searching, I came across one of the technologies that
+underpin the entire Linux containers world: _cgroups_. With them, it is
+possible to define resource control policies for groups of resources
+managed by the kernel, such as CPU time and memory.
+
+I am not going to talk about cgroups as they are a vast topic and deep
+undestanding is not required to see why they will enable us to access
+our USB devices. [This man page][cgroups] can be a good starting point
+to the topic for those who care.
+
+Now, among the many _resource controllers_ the kernel provides, there is
+the _devices_ controller, which defines how processes can access device
+nodes. Each cgroup for this controller can define rules that either
+allow or deny access to specific devices, depending on their type
+(character or block), their major and minor numbers, and the operation
+we want to perform (read, write, mknod).
+
+By default, unprivileged Docker containers (those not created with the
+`--privileged` option) are placed in a cgroup which deny access to all
+device nodes.
+
+However, there is a way to tell docker to add additional rules to this
+cgroup before launching the container: `--device-cgroup-rule`.
+It must be added to the `run` command and is followed by a rule
+specification, which takes this form:
+
+    a|b|c MAJOR_OR_ASTERISK:MINOR_OR_ASTERISK [rwm]
+
+Basically, the first field is a letter among `a`, `b`, `c` which defines
+the device node type: `b`lock, `c`haracter and `a`ll. It is followed by
+the major and minor numbers separated by a colon; an asterisk can be
+used instead of a number to match all majors, all minors or both.
+Finally the last field defines the allowed operations: `r`ead, `w`rite,
+`m`knod.
+
+Back to our previous test, which failed to call `dd` on the device node.
+This device has a major of 189 and is a character device. Let's try to
+call `dd` again, but this time we tell Docker to allow read and access
+to every character device with a major of 189:
+
+    $ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
+        --device-cgroup-rule 'c 189:* rw' \
+        ubuntu:bionic \
+        dd if=/dev/bus/usb/005/007 bs=1 count=0
+
+    0+0 records in
+    0+0 records out
+    0 bytes copied, 3.2911e-05 s, 0.0 kB/s
+
+No error this time!
+
+So, to recap, if you need to access USB devices from a container:
+
+* bind-mount `/dev/bus/usb` inside the container;
+* take note of the type, major and minor of the device(s) you need to
+  access;
+* pass the corresponding rules to `--device-cgroup-rule`
+
+It should be noted that it is possible to be lazy and just run the
+container as privileged. This allows access to all devices without the
+need to mess with cgroups. However, it provides a much broader access to
+the host than we need.
+
+[cgroups]: http://man7.org/linux/man-pages/man7/cgroups.7.html
