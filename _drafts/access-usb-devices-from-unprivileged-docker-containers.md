@@ -5,26 +5,26 @@ categories: Docker
 ---
 # {{ page.title }}
 
-Sometimes, a conteinerized application may need to access devices from
+Sometimes, a containerized application may need to access devices from
 the host. For example, we might be testing serial console tools inside a
 container, and need to pass the device node for our serial port to the
 container, for example `/dev/ttyUSB0`.
 
 When using Docker, we can request a single device to be made available
-within the container by using the `--device` options of the ~run`
+within the container by using the `--device` options of the `run`
 command. This way that device node, and only that, is passed to the
 container and made accessible.
 
-In some cases, passing single device nodes may ne unsuitable. A typical
+In some cases, passing single device nodes may be unsuitable. A typical
 case is allowing a tool to access devices which can appear and disappear
-and thus change name. Let's say, in out previous example, that I start
+and thus change name. Let's say, in our previous example, that I start
 with a serial converter mapped to `/dev/ttyUSB0`, then it gets
-unplugged, a different serial device is plugged in and the the original
+unplugged, a different serial device is plugged in and the original
 device is reattached. At this point the once-`ttyUSB0` has become
 `/dev/ttyUSB1`, which is not available to the container.
 
 A potential solution is to deploy a udev rule that gives the device node
-a fixed name, base don some attribute of the device (such as its vendor
+a fixed name, based on some attribute of the device (such as its vendor
 id or product id).
 
 There is a case, however, which cannot be easily covered by udev rules:
@@ -94,7 +94,7 @@ OK, so far so good. Let's check the permissions of one of those devices:
     crw-rw-r-- 1 root root 189, 518 Feb 10 20:02 /dev/bus/usb/005/007
 
 It's root owned and has read/write permissions for the owner. This is
-good, so our root user inside tyhe container can access it even if it
+good, so our root user inside the container can access it even if it
 doesn't posses the `CAP_DAC_OVERRIDE` capability.
 
 To verify if we can access it, let's try to open the device for reading:
@@ -105,20 +105,21 @@ To verify if we can access it, let's try to open the device for reading:
 
     dd: failed to open '/dev/bus/usb/005/007': Operation not permitted
 
-Now, this is weird. The device node can be accessed from the container,
-it the right permissions and file owner. But we cannot open it. Why?
+Now, this is weird. The device node shows up inside the container, it
+has the right permissions and file owner. But we cannot open it. Why?
 
-After some searching, I came across one of the technologies that
-underpin the entire Linux containers world: _cgroups_. With them, it is
-possible to define resource control policies for groups of resources
-managed by the kernel, such as CPU time and memory.
+This has to do with one of the technologies that underpin the entire
+Linux containers world: _cgroups_. With them, it is possible to define
+resource control policies for resources managed by the kernel, such as
+CPU time and memory. [This man page][cgroups] can be a good starting
+point to the topic for those who care. Basically, they are a way to
+flexibly define and enforce usage limits that processes must obey. For
+example, a process may not be allowed to use more than a certain amount
+of CPU time to prevent system starvation. Every kind of resource that
+can be affected by cgroups is called a _resource controller_ or
+_subsystem_.
 
-I am not going to talk about cgroups as they are a vast topic and deep
-undestanding is not required to see why they will enable us to access
-our USB devices. [This man page][cgroups] can be a good starting point
-to the topic for those who care.
-
-Now, among the many _resource controllers_ the kernel provides, there is
+Now, among the many resource controllers the kernel provides, there is
 the _devices_ controller, which defines how processes can access device
 nodes. Each cgroup for this controller can define rules that either
 allow or deny access to specific devices, depending on their type
@@ -129,24 +130,24 @@ By default, unprivileged Docker containers (those not created with the
 `--privileged` option) are placed in a cgroup which deny access to all
 device nodes.
 
-However, there is a way to tell docker to add additional rules to this
+However, there is a way to tell Docker to add additional rules to this
 cgroup before launching the container: `--device-cgroup-rule`.
 It must be added to the `run` command and is followed by a rule
 specification, which takes this form:
 
     a|b|c MAJOR_OR_ASTERISK:MINOR_OR_ASTERISK [rwm]
 
-Basically, the first field is a letter among `a`, `b`, `c` which defines
-the device node type: `b`lock, `c`haracter and `a`ll. It is followed by
-the major and minor numbers separated by a colon; an asterisk can be
+Basically, the first field is a letter among `b`, `c` and `a`,  which
+defines the device node type: block, character and all. It is followed
+by the major and minor numbers separated by a colon; an asterisk can be
 used instead of a number to match all majors, all minors or both.
-Finally the last field defines the allowed operations: `r`ead, `w`rite,
-`m`knod.
+Finally, the last field defines the allowed operations: read, write,
+mknod. Any combination of operations can be specified in a single rule.
 
 Back to our previous test, which failed to call `dd` on the device node.
 This device has a major of 189 and is a character device. Let's try to
-call `dd` again, but this time we tell Docker to allow read and access
-to every character device with a major of 189:
+call `dd` again, but this time we tell Docker to allow read and write
+access to every character device with a major of 189:
 
     $ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
         --device-cgroup-rule 'c 189:* rw' \
@@ -164,11 +165,14 @@ So, to recap, if you need to access USB devices from a container:
 * bind-mount `/dev/bus/usb` inside the container;
 * take note of the type, major and minor of the device(s) you need to
   access;
-* pass the corresponding rules to `--device-cgroup-rule`
+* pass the corresponding rule to `--device-cgroup-rule`
 
 It should be noted that it is possible to be lazy and just run the
 container as privileged. This allows access to all devices without the
 need to mess with cgroups. However, it provides a much broader access to
-the host than we need.
+the host than we need in most cases.
+
+If the devices have a dynamic major, using a rule like `c *:* rw` is
+still better than using `--privileged`.
 
 [cgroups]: http://man7.org/linux/man-pages/man7/cgroups.7.html
