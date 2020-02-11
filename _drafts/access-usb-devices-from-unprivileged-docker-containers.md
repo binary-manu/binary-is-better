@@ -127,8 +127,8 @@ allow or deny access to specific devices, depending on their type
 we want to perform (read, write, mknod).
 
 By default, unprivileged Docker containers (those not created with the
-`--privileged` option) are placed in a cgroup which deny access to all
-device nodes.
+`--privileged` option) are placed in a cgroup that allows access to just
+a few device nodes.
 
 However, there is a way to tell Docker to add additional rules to this
 cgroup before launching the container: `--device-cgroup-rule`.
@@ -144,10 +144,27 @@ used instead of a number to match all majors, all minors or both.
 Finally, the last field defines the allowed operations: read, write,
 mknod. Any combination of operations can be specified in a single rule.
 
+This is what Docker allows by default in a unprivileged container on my
+system:
+
+    c 1:5 rwm
+    c 1:3 rwm
+    c 1:9 rwm
+    c 1:8 rwm
+    c 5:0 rwm
+    c 5:1 rwm
+    c *:* m
+    b *:* m
+    c 1:7 rwm
+    c 136:* rwm
+    c 5:2 rwm
+    c 10:200 rwm
+
 Back to our previous test, which failed to call `dd` on the device node.
-This device has a major of 189 and is a character device. Let's try to
-call `dd` again, but this time we tell Docker to allow read and write
-access to every character device with a major of 189:
+This device has a major of 189 and is a character device. Since it is
+not present in the previous list, access is denied. Let's try to call
+`dd` again, but this time we tell Docker to allow read and write access
+to every character device with a major of 189:
 
     $ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
         --device-cgroup-rule 'c 189:* rw' \
@@ -158,7 +175,24 @@ access to every character device with a major of 189:
     0+0 records out
     0 bytes copied, 3.2911e-05 s, 0.0 kB/s
 
-No error this time!
+No error this time! Let's check the new list of rules for the container
+cgroup:
+
+    c 1:5 rwm
+    c 1:3 rwm
+    c 1:9 rwm
+    c 1:8 rwm
+    c 5:0 rwm
+    c 5:1 rwm
+    c *:* rwm
+    b *:* m
+    c 1:7 rwm
+    c 136:* rwm
+    c 5:2 rwm
+    c 10:200 rwm
+
+Note that now there is a rule allowing full access to all character
+devices.
 
 So, to recap, if you need to access USB devices from a container:
 
