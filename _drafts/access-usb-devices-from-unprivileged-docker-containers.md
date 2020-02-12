@@ -10,6 +10,8 @@ the host. For example, we might be testing serial console tools inside a
 container, and need to pass the device node for our serial port to the
 container, for example `/dev/ttyUSB0`.
 
+## Single device or multiple devices
+
 When using Docker, we can request a single device to be made available
 within the container by using the `--device` options of the `run`
 command. This way that device node, and only that, is passed to the
@@ -48,8 +50,8 @@ For example, this is my `/dev/bus/usb` right now:
     │   └── 005
     [skip]
 
-Now, let me detach and reattach my USB mouse dongle, and let's take a
-snapshot of that directory again:
+Now, let's take a snapshot of that directory again after I have attached
+and reattached my USB mouse dongle:
 
     /dev/bus/usb
     ├── 001
@@ -65,14 +67,13 @@ snapshot of that directory again:
     │   └── 006
     [skip]
 
-As you may notice, the device `005/004` has been renamed `005/006`. A
-quick look at what `lsusb` has to say confirms that it is actually my
-mouse.
+Note that the device `005/004` has been renamed `005/006`. A quick look
+at what `lsusb` has to say confirms that it is actually my mouse.
 
 Again, we are in a situation where no single device can be passed. So we
-have to resort to something more... brutal. If we cannot pass a single
-device node, we can pass the entire `/dev/bus/usb` folder to the
-container. This is pretty easy to do using bind mounts:
+have to resort to something different. If we cannot pass a single device
+node, we can pass the entire `/dev/bus/usb` folder to the container.
+This is pretty easy to do using bind mounts:
 
     $ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
         ubuntu:bionic ls /dev/bus/usb
@@ -81,8 +82,7 @@ container. This is pretty easy to do using bind mounts:
 
 Let's check that without the bind mount that path does not exist:
 
-    $ docker run -it --rm \
-        ubuntu:bionic ls /dev/bus/usb
+    $ docker run -it --rm ubuntu:bionic ls /dev/bus/usb
 
     ls: cannot access '/dev/bus/usb': No such file or directory
 
@@ -93,14 +93,13 @@ OK, so far so good. Let's check the permissions of one of those devices:
 
     crw-rw-r-- 1 root root 189, 518 Feb 10 20:02 /dev/bus/usb/005/007
 
-It's root owned and has read/write permissions for the owner. This is
+It's root-owned and has read/write permissions for the owner. This is
 good, so our root user inside the container can access it even if it
 doesn't posses the `CAP_DAC_OVERRIDE` capability.
 
-To verify if we can access it, let's try to open the device for reading:
+To verify if we can access it, let's try opening the device for reading:
 
-    $ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
-        ubuntu:bionic \
+    $ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb ubuntu:bionic \
         dd if=/dev/bus/usb/005/007 bs=1 count=0
 
     dd: failed to open '/dev/bus/usb/005/007': Operation not permitted
@@ -108,23 +107,25 @@ To verify if we can access it, let's try to open the device for reading:
 Now, this is weird. The device node shows up inside the container, it
 has the right permissions and file owner. But we cannot open it. Why?
 
+## Control groups (cgroups)
+
 This has to do with one of the technologies that underpin the entire
 Linux containers world: _cgroups_. With them, it is possible to define
-resource control policies for resources managed by the kernel, such as
-CPU time and memory. [This man page][cgroups] can be a good starting
-point to the topic for those who care. Basically, they are a way to
-flexibly define and enforce usage limits that processes must obey. For
-example, a process may not be allowed to use more than a certain amount
-of CPU time to prevent system starvation. Every kind of resource that
-can be affected by cgroups is called a _resource controller_ or
-_subsystem_.
+control policies for resources managed by the kernel, such as CPU time
+and memory. [This document][cgroups] can be a good starting point to the
+topic for those who care. Basically, they are a way to flexibly define
+and enforce usage limits that processes must obey. For example, a
+process may not be allowed to use more than a certain amount of system
+memory. Every kind of resource that can be affected by cgroups is called
+a _resource controller_ or _subsystem_.
 
 Now, among the many resource controllers the kernel provides, there is
 the _devices_ controller, which defines how processes can access device
-nodes. Each cgroup for this controller can define rules that either
-allow or deny access to specific devices, depending on their type
-(character or block), their major and minor numbers, and the operation
-we want to perform (read, write, mknod).
+nodes: more about it can be read [here][cgroup-devices]. Each cgroup for
+this controller can define rules that either allow or deny access to
+specific devices, depending on their type (character or block), their
+major and minor numbers, and the operation we want to perform (read,
+write, mknod).
 
 By default, unprivileged Docker containers (those not created with the
 `--privileged` option) are placed in a cgroup that allows access to just
@@ -133,19 +134,25 @@ a few device nodes.
 However, there is a way to tell Docker to add additional rules to this
 cgroup before launching the container: `--device-cgroup-rule`.
 It must be added to the `run` command and is followed by a rule
-specification, which takes this form:
+specification. The full definition of rules can be found in the devices
+subsystem documentation, but for now let's get away with the following:
 
-    a|b|c MAJOR_OR_ASTERISK:MINOR_OR_ASTERISK [rwm]
+    a|b|c MAJOR_OR_ASTERISK:MINOR_OR_ASTERISK [r][w][m]
 
 Basically, the first field is a letter among `b`, `c` and `a`,  which
 defines the device node type: block, character and all. It is followed
 by the major and minor numbers separated by a colon; an asterisk can be
 used instead of a number to match all majors, all minors or both.
 Finally, the last field defines the allowed operations: read, write,
-mknod. Any combination of operations can be specified in a single rule.
+mknod. Any combinations of operations can be specified in a single rule.
 
-This is what Docker allows by default in a unprivileged container on my
-system:
+To see what Docker allows by default in an unprivileged container, we can
+dump the contents of
+`/sys/fs/cgroup/devices/docker/$CONT_ID/devices.list`, the whitelist of
+allowed devices for the container whose ID is `$CONT_ID`:
+
+    $ CONT_ID=$(docker run -id ubuntu:bionic)
+    $ cat "/sys/fs/cgroup/devices/docker/$CONT_ID/devices.list"
 
     c 1:5 rwm
     c 1:3 rwm
@@ -160,15 +167,17 @@ system:
     c 5:2 rwm
     c 10:200 rwm
 
-Back to our previous test, which failed to call `dd` on the device node.
-This device has a major of 189 and is a character device. Since it is
-not present in the previous list, access is denied. Let's try to call
-`dd` again, but this time we tell Docker to allow read and write access
-to every character device with a major of 189:
+    $ docker container rm --force "$CONT_ID"
+
+Back to our previous test, which failed to call `dd`. This device has a
+major of 189 and is a character device. Since there is no rule that
+explicitly allows access to such device in the previous list, we got an
+error. Let's try calling `dd` again, but this time we tell Docker to
+allow read and write access to every character device with a major of
+189:
 
     $ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
-        --device-cgroup-rule 'c 189:* rw' \
-        ubuntu:bionic \
+        --device-cgroup-rule 'c 189:* rw' ubuntu:bionic \
         dd if=/dev/bus/usb/005/007 bs=1 count=0
 
     0+0 records in
@@ -178,23 +187,32 @@ to every character device with a major of 189:
 No error this time! Let's check the new list of rules for the container
 cgroup:
 
+    $ CONT_ID=$(docker run -id --device-cgroup-rule 'c 189:* rw' \
+        ubuntu:bionic)
+    $ cat "/sys/fs/cgroup/devices/docker/$CONT_ID/devices.list"
+
     c 1:5 rwm
     c 1:3 rwm
     c 1:9 rwm
     c 1:8 rwm
     c 5:0 rwm
     c 5:1 rwm
-    c *:* rwm
+    c 189:* rw
+    c *:* m
     b *:* m
     c 1:7 rwm
     c 136:* rwm
     c 5:2 rwm
     c 10:200 rwm
 
-Note that now there is a rule allowing full access to all character
-devices.
+    $ docker container rm --force "$CONT_ID"
 
-So, to recap, if you need to access USB devices from a container:
+Note that now there is a rule allowing read and write access to all character
+devices with a major of 189.
+
+## Recap
+
+If you need to access USB devices from a container:
 
 * bind-mount `/dev/bus/usb` inside the container;
 * take note of the type, major and minor of the device(s) you need to
@@ -209,4 +227,5 @@ the host than we need in most cases.
 If the devices have a dynamic major, using a rule like `c *:* rw` is
 still better than using `--privileged`.
 
-[cgroups]: http://man7.org/linux/man-pages/man7/cgroups.7.html
+[cgroups]: https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v1/cgroups.html
+[cgroup-devices]: https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v1/devices.html
