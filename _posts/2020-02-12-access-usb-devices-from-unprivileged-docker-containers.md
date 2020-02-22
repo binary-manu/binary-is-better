@@ -94,8 +94,9 @@ OK, so far so good. Let's check the permissions of one of those devices:
     crw-rw-r-- 1 root root 189, 518 Feb 10 20:02 /dev/bus/usb/005/007
 
 It's root-owned and has read/write permissions for the owner. This is
-good, so our root user inside the container can access it even if it
-doesn't posses the `CAP_DAC_OVERRIDE` capability.
+not so relevant, however, since our container processes are by default
+run as `root` (we didn't specify a different user using the `-u` option
+for `docker run`) and so they posses the `CAP_DAC_OVERRIDE` capability.
 
 To verify if we can access it, let's try opening the device for reading:
 
@@ -104,8 +105,8 @@ To verify if we can access it, let's try opening the device for reading:
 
     dd: failed to open '/dev/bus/usb/005/007': Operation not permitted
 
-Now, this is weird. The device node shows up inside the container, it
-has the right permissions and file owner. But we cannot open it. Why?
+Now, this is weird. The device node shows up inside the container and we
+are root. But we cannot open it. Why?
 
 ## Control groups (cgroups)
 
