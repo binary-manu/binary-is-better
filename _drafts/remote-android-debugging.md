@@ -22,15 +22,15 @@ have a physical Android 10 device, so you resort to running the emulator
 with the official system image.
 
 However, the emulator is, to all effects, an hypervisor on its own,
-creating a VM to run your Android system, and taking advantage of your
-hardware features to speed up the execution (i.e. Intel VT-x or AMD SVM,
+creating a VM to run your Android system and taking advantage of
+hardware features to speed up execution (i.e. Intel VT-x or AMD SVM,
 which provide hardware-assisted virtualization and are required to run
 x86 Android images on a PC).  As such, it does not coexist peacefully
 with other VM solutions running on your machine at the same time and
-trying to use virtualization extensions of your CPU. If you are already
-running a VM on your system using a solution like VMWare Workstation or
-VirtualBox, they will conflict with the Android emulator (which happens
-to be qemu in disguise).
+trying to use virtualization extensions. If you are already running a VM
+on your system using a product like VMWare Workstation or VirtualBox,
+they will conflict with the Android emulator (which happens to be qemu
+in disguise).
 
 The good news is, you don't need to run the Android emulator on the same
 system where you run your development environment. Android debug tools
@@ -57,7 +57,7 @@ For this samples setup, we'll use two machines:
 To establish the connection between `adb` and the emulator, we will need
 an open TCP port on `emu.local`. This can be any port, but in the
 following I'll use `45555`. By default, the first (or only) Android
-emulator listens on port `5555` for incoming connection, so `45555` is
+emulator listens on port `5555` for incoming connections, so `45555` is
 easy to remember.
 
 Android Studio and the SDK should be installed on both systems, although
@@ -68,12 +68,11 @@ they will be used asymmetrically:
 * on `emu.local` we'll just create and run the AVD for our emulator: no
   code resides here.
 
-It should be noted that the emulator on `emu.local` will accept keyboard
-and mouse interactions from the `emu.local` only: you will not be able
-to control them from `dev.local`. So if you need to type a value or
-click a button, you need to be in front of `emu.local`. Of course, a
-remote desktop connection would work just as well. It all depends on the
-relative positions of the two systems.
+It should be noted that the emulator on `emu.local` expects to receive
+inputs from the local mouse and keyboard.  So if you need to type a
+value or click a button, you need to be in front of `emu.local`.  Of
+course, a remote desktop connection would work just as well. It all
+depends on the relative positions of the two systems.
 
 ### Setting up `emu.local`
 
@@ -83,22 +82,22 @@ suits your needs. When ready, run it.
 
 Emulators start with debug settings enabled, so they are ready to accept
 connections from `adb`.  However, there is a catch: they only listen on
-the loopback interfaces. They assume that connections will be coming
-from a local `adb` instance connecting to `localhost`, but this is not
-the case. We want the emulator to be accessible from an external network
+the loopback interface. They assume that connections will be coming from
+a local `adb` instance connecting to `localhost`, but this is not the
+case. We want the emulator to be accessible from an external network
 interface and to expose its services on the port we have chosen in the
 previous section, that is, `45555`.
 
 Now, there are essentially two ways to accomplish this:
 
 * we can configure a DNAT rule that redirects all incoming TCP traffic
-  from port `45555` from our local network interface to port `5555` on
-  `localhost`. This is simple to do under Linux with `iptables` and some
-  tweaking with `sysctl` to enable forwarding to the local machine;
-* we can employ a userspace connection forwarder that proxies all
-  connections from a certain local host:port combination to another. It
-  will then receive all connection to port `45555` on external IP's and
-  forward them to `localhost:5555`.
+  targeting port `45555` on any local network interface, sending it to
+  `localhost:5555`. This is simple to do under Linux with `iptables` and
+  some tweaking with `sysctl` to enable forwarding to the local machine;
+* we can alternatively employ a userspace connection forwarder that
+  proxies all connections from a certain local host and port combination
+  to another.  It will then receive all connections to port `45555` for
+  external IP's and forward them to `localhost:5555`.
 
 We'll go with the userspace tool, as I think that messing with
 `iptables` for such a scenario is overkill, not to mention that it
@@ -133,9 +132,9 @@ This command will accept TCP connections (over IPv4 only) on port
 `45555` and forward them to port `5555` on `localhost`, were the
 emulator is listening.
 
-Note the `fork` option on the listening port: without it, `socat` will
-exit as soon as the first incoming connection is closed. If your `adb`
-disconnect and then tries to reconnect, it will no longer be able to do
+Note the `fork` option on the listening port: without it, `socat` would
+exit as soon as the first incoming connection is closed. If `adb`
+disconnects and then tries to reconnect, it will no longer be able to do
 so because `socat` has terminated. This option ensures that `socat` will
 keep running in face of multiple reconnections.
 
@@ -173,7 +172,7 @@ ready. Just like `socat`, it will listen on all active interfaces.
 
 ### On `dev.local`
 
-Setting up `dev.local` is much easier, since Android Studio and the SDk
+Setting up `dev.local` is much easier, since Android Studio and the SDK
 are all we need to connect to out shiny new remote emulator.
 
 Fire up a terminal (the one embedded in Studio is just fine) and type
@@ -181,44 +180,44 @@ the following (assuming that `adb` is in your `PATH`):
 
     adb connect emu.local:45555
 
-Of course, if your system is not really named `emu.local` you need to
-adjust the command as appropriate.
+Of course, if your system is not really named `emu.local`, you'll need
+to adjust the command as appropriate.
 
 Now, if everything is working fine, `adb` should tell us it connected
 successfully. From now on, all commands that could be directed to a
 local emulator can be used on the remote one too. You can copy files,
 access the shell and see it in devices listings. But more importantly,
-Android Studio will allow to run instrumented tests and debug
-application running on the remote emulator.
+Android Studio can run instrumented tests and debug application on the
+remote emulator.
 
 ## Additional info
 
 ### Can't the Android emulator really coexist with other VM's?
 
-On Windows, the Android Emulator is backed by Intel _Hardware
-Accelerated Execution Manager (Intel HAXM)_. Starting from a certain (
-and not so recent) release, HAXM can run concurrently with other
-hypervisors.
+On Windows, the Android Emulator is backed by the _Intel Hardware
+Accelerated Execution Manager_ (_Intel HAXM_). Starting from a certain
+release, HAXM can run concurrently with other hypervisors.
 
-I have tested it with VirtualBox and been able to run the
-emulator concurrently with my Studio environment hosted under
-VirtualBox. However, I have experienced inexplicable test suite failures
-when running under this configuration, which never happened when using
-just one hypervisor at a time per machine. So I do not currently
-recommend this method for any serious development.
+I have tested it with VirtualBox and have been able to run the emulator
+concurrently with my Studio environment hosted under VirtualBox.
+However, I have experienced inexplicable test suite failures when
+running under this configuration, which never happened when using just
+one hypervisor at a time per machine. So I do not currently recommend
+this method for any serious development.
 
 ### Can I run the Android emulator under a VM?
 
 Running a VM inside a VM is called _nested virtualization_, and its
-availability depends on the hypervisor you are using. Hyper-V and VMWare
-Workstation have good support for this feature. VirtualBox added nested
+availability depends on the hypervisor you are using and your CPU's
+virtualization extensions.  Hyper-V and VMWare Workstation have good
+support for this feature on Intel hardware.  VirtualBox added nested
 virtualization support for Intel hardware in version 6.1 and for AMD
 hardware in version 6.0.
 
-I have been able to run the emulator in nested virtualization mode under
-either Hyper-V or VMWare Workstation. Under VirtualBox, it starts but
-then is simply shows a black screen, probably because of some issues
-with GPU 3D acceleration.
+I have been able to run the emulator nested under either Hyper-V or
+VMWare Workstation. Under VirtualBox, it starts but then it simply shows
+a black screen, probably because of some issues with GPU 3D
+acceleration.
 
 <!-- Links --------------------------------------------------------- -->
 
