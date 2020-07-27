@@ -1,0 +1,199 @@
+---
+# vi: set tw=72 et sw=2 sts=-1 autoindent fo=troqan :
+title: A look at csplit
+category: Linux
+---
+
+# {{ page.title }}
+
+Most Linux users that regularly use the terminal are aware of the [_GNU
+Coreutils_][coreutils], an extensive collection of utilities that
+includes things like `sort`, `uniq`, `cut` and `cat`, and that all of us
+use daily to perform file manipulation tasks.
+
+Among them, there is `split`, a tool which can be used to divide a file
+into smaller parts, each one stored into a individual file. It can
+operate in various ways, the most common being making each part exactly
+`N` bytes large or containing `N` lines of text. For example, one can
+use `split` to divide a large ISO file into smaller parts for
+transmission, and then reassemble the pieces using `cat`.
+
+`split` has a lesser known brother: [`csplit`][csplit]. Unlike `split`,
+`csplit` performs _context-based_ splitting, meaning that instead of
+simply splitting a file after a fixed number of bytes or lines, it looks
+for specific markers to act as separators. Such markers can be provided
+as regular expressions, which are looked in the input file. Each time a
+regexp matches, the program outputs everything that comes before that
+line to a new file. Then, it starts again from the matched line and
+looks for the next match, repeating the process until the input is
+exhausted. File creation and numbering is handled by the tool, just like
+`split` does.
+
+Suppose we have a multi-document YAML file:
+
+```yaml
+key1: value1
+---
+key2: value2
+---
+key3: value3
+```
+
+We need to split it so that each document goes into its own file (the
+lines starting with `#` are not part of the files, they were added to
+mark the beginning of each individual file, a la `head -v`):
+
+```yaml
+# ==> /tmp/test-000.yaml <==
+key1: value1
+
+# ==> /tmp/test-001.yaml <==
+key2: value2
+
+# ==> /tmp/test-002.yaml <==
+key3: value3
+
+```
+
+This is a perfect use case: we want to isolate specific portions of the
+file depending on where the YAML document marker `---` appears.
+
+## Patterns and repeat counters
+
+The general form of the `csplit` command line is:
+
+    csplit [OPTIONS]... FILE PATTERNS...
+
+where `FILE` is the path to the file we want to split, and `PATTERNS`
+are one or more regular expressions used to match the next separation
+line. Expressions follow the [_BRE_ (_Basic Regular Expression_)][bre]
+syntax, so things like `+` and `|` must be preceded by a backslash to be
+recognized as metacharacters. Also, regexps are always enclosed between
+a pair of `/` characters, so they look like `/a.*b/`.
+
+In our example, we want to match the line containing only 3 dashes, so
+we would use the expressions `/^---$/`. Beginning of line and end of
+line anchors are used to ensure that lines containing three dashes in
+the middle are not mistakenly interpreted as document separators.
+
+Each regexp, by default is used only once. If we were to run:
+
+    csplit test.yaml '/^---$/'
+
+we would end of with two new files, not three, the first one will
+contain the first document, the second one the remaining two. To allow
+for regexps to be reused, they can be followed by a _repeat counter_, a
+positive integer enclosed in `{}` that causes the expression to be
+matched multiple times. For example, `{2}` means that the regexp must be
+matched two more times, _in addition to the single match implied by the
+regexp itself_, so that the program would attempt a total of three
+matches before moving on to the next regexp. Each repeat count only
+applies to the expression immediately preceding it. For example:
+
+    csplit test.yaml '/^---$/' '{1}'
+
+would split our file correctly, as it split on two document separators,
+once for the expression itself and once because of the repetition.
+
+As a special case, one can use an asterisk in place of a number to mean
+_split as many times as you can_. Thus, the following is equivalent to
+the previous example:
+
+    csplit test.yaml '/^---$/' '{*}'
+
+## File naming
+
+So far so good, but if we look at the filenames `csplit` constructs for
+new files, they don't tell us much about the original file they come
+from. By default, each file name is constructed by appending a 2-digit
+decimal counter to the prefix `xx`, so our files are going to be called
+`xx00`, `xx01` and so on. This is hardly useful.
+
+A few options allow us to tweak file naming:
+
+* `-f` replaces the prefix. Instead of `xx` we may use `test-`, so that
+  is is evident which file generated the pieces;
+* `-b` replaces the numeric suffix. It can contain literal text in
+  addition to the counter, and it uses a single `printf`-style
+  placeholder to specify where the counter should be expanded. In our
+  case, we would like for our files to end with a 3-digit counter and
+  the `.yaml` extension. We could therefore pass this option the value
+  `%03u.yaml`, which causes suffixes like `000.yaml`, `001.yaml` and so
+  on to be used;
+* `-n` is a simpler alternative to `-b`, which changes the width of the
+  numeric suffix but does not allow for additional text and therefore
+  does not require any placeholder.
+
+Let's try again with `-f` and `-b`:
+
+    csplit -f 'test-' -b '%03u.yaml' test.yaml '/^---$/' '{*}'
+
+And this is what it produces in the current directory:
+
+    test.yaml
+    test-000.yaml
+    test-001.yaml
+    test-002.yaml
+
+## Suppressing the matching lines
+
+If we now look inside the output files:
+
+```yaml
+# ==> /tmp/test-000.yaml <==
+key1: value1
+
+# ==> /tmp/test-001.yaml <==
+---
+key2: value2
+
+# ==> /tmp/test-002.yaml <==
+---
+key3: value3
+```
+
+there is still something wrong. The lines matching the regexp were
+included at the beginning of the next output file. With the exception of
+the first file, all other YAML documents start with `---`. This is not
+what we wanted.
+
+This is because we told `csplit` to divide the files at specific lines,
+but we never told it that those lines were to be discarded.
+Luckily, there is an option that does exactly that:
+`--suppress-matched`:
+
+    csplit -f 'test-' -b '%03u.yaml' --suppress-matched \
+        test.yaml '/^---$/' '{*}'
+
+This time the output is correct:
+
+```yaml
+# ==> /tmp/test-000.yaml <==
+key1: value1
+
+# ==> /tmp/test-001.yaml <==
+key2: value2
+
+# ==> /tmp/test-002.yaml <==
+key3: value3
+```
+
+It is not always meaningful to use this option: if we were to split a
+Markdown file into sections by looking at lines starting with `#`, we
+don't want titles to be thrown away.
+
+## Conclusion
+
+`csplit` can be a little time saver when you need to do exactly what it
+was designed to do: split a file into parts using specific lines as
+separators.
+
+Although I explained the core features, it provides options and
+functionalities I didn't mention, so make sure tho have a look at its
+manpage for the full details.
+
+<!-- Links -->
+
+[csplit]: https://www.gnu.org/software/coreutils/manual/html_node/csplit-invocation.html#csplit-invocation
+[coreutils]: https://www.gnu.org/software/coreutils
+[bre]: https://en.wikipedia.org/wiki/Regular_expression#POSIX_basic_and_extended
