@@ -101,6 +101,10 @@ the previous example:
 
     csplit test.yaml '/^---$/' '{*}'
 
+`csplit` also dumps some information to standard output: the sizes of
+all files produced, one per line. So in our case we expect it to print 3
+integers: the sizes of the 3 output files.
+
 ## File naming
 
 So far so good, but if we look at the filenames `csplit` constructs for
