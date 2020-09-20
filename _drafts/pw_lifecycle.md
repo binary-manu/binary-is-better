@@ -39,22 +39,22 @@ On Linux, the system stores the following data for each account:
   their login shell;
 * _user ID's_, their _user ID (UID)_ and primary _group ID (GID)_;
 * _user full name_, often called a _comment_;
-* _account expiration date_, an specific date after which the account
-  can no longer be used. As we will see, this information is independent
+* _account expiration date_, a specific date after which the account can
+  no longer be used. As we will see, this information is independent
   from _password-aging data_, altough they are othen used together in
   security checks;
 * _supplementary group memberships_, the list of groups, in addition to
   the primary one identified by the _GID_, to which the user belongs;
-* _group passwords_: groups can have a password, which is used by some
-  tools to allow gaining temporary membership if you are not a membner
+* _group passwords_: groups can have passwords, which are used by some
+  tools to allow gaining temporary membership if you are not a member
   yet.
 
 As can be guessed from the list, some bits of information are likely to
 be much more sensitive than others. For example, username and comment
 are likely public information, while the password must be protected from
-prying eyes. For these reason, modern systems use two different files to
-store them. Also, group information is handled separately to better cope
-with its one-to-many nature:
+prying eyes. For these reasons, modern systems use different files to
+store them. Also, group data is handled separately to better cope with
+their one-to-many nature:
 
 * `/etc/passwd` stores non-sensitive non-group information, such as
   usernames, UID's, comments and the like. While the file is only
@@ -70,19 +70,19 @@ with its one-to-many nature:
   writable by root for administrative purpouses, anyone can read it, in
   order to discover group memberships for a user;
 * `/etc/gshadow` stores sensitive group information: group passwords go
-  here.
+  there.
 
-### /etc/fstab
+### /etc/passwd
 
-The structure of `/etc/fstab` is simple: every line corresponds to a
-different account and is composed of exactly 7 fields, separated by a
-colon (`:`). This is excerpt from my system:
+The structure of `/etc/passwd` is simple: every line maps to a different
+account and is composed of exactly 7 fields, separated by a colon (`:`).
+This is excerpt from my system:
 
     root:x:0:0:root:/root:/bin/bash
     manu:x:1000:100:Manu:/home/manu:/bin/bash
     [...]
 
-The first line described the account for the super user, the second one
+The first line describes the account for the super user, the second one
 maps to my primary user account. The fields are defined as follows:
 
 1. the _username_;
@@ -104,10 +104,10 @@ world-readable and should not contain passwords and other sensitive
 information, yet the second field is called _password_… what is going
 on?
 
-In early versions of UNIX this file used to also store passwords. Of
-course, password were not stored as cleartext, but as salted hashes,
-which means that instead of your plain password you would see a longer
-and apparently meaningless sequences of letters, digits and other
+In early versions of UNIX this file used to also store passwords. For
+security reasons, passwords were not stored as cleartext, but as salted
+hashes, which means that instead of your plain password you would see a
+longer and apparently meaningless sequences of letters, digits and other
 symbols.  Such a sequence is derived from your password using a one-way
 cryptographic function, so that it is very easy to calculate the hash
 given the password, but is (theoretically) very hard to recover the
@@ -116,23 +116,23 @@ cleartext password at login time, calculate the hash, then compare what
 it calculated with the contents of the _password_ field. If they
 matched, login would be allowed.
 
-Conversely, if a malicious user tried to impersonate you, simply
-knmowing the hash of your password is useless, because it cannot be
-directly typed at password prompts: the system would treat it as a plain
-password and hash it again, producing a different result.
+Conversely, if a malicious user tried to impersonate you, simply knowing
+the hash of your password is useless, because it cannot be directly
+typed at password prompts: the system would treat it as a plain password
+and hash it again, producing a different result.
 
 However, as technology progressed, attacks against this scheme have
 become more sofisticated and feasible. Therefore, it was decided to
-store password in a different file, readable only by the superuser.
+store passwords in a different file, readable only by the superuser.
 Passwords are still stored as hashes, since it offers greater protection
 in case the contents are leaked somehow.
 
-When password were moved, the corresponding field was retained in order
-to avoid shifting the other fields. Nowadays, it is common to see an `x`
+When passwords were moved, the corresponding field was retained in order
+to avoid shifting the others . Nowadays, it is common to see an `x`
 inside it, which simply means that the password should be looked up in
 `/etc/shadow`.
 
-### `/etc/shadow`
+### /etc/shadow
 
 This file is were sensitive information are stored. Here is an excerpt
 (the file comes from a Vagrant machine, so the plaintext passwords for
@@ -151,9 +151,9 @@ Each line contains 9 fields:
 4. the _minimum password age_, which is the number of days that must
    elapse after a password change before it can be changed again;
 5. the _maximum password age_, which is the number of days after which
-   the password must be changed. this value is relative to the contents
-   of field #2: summing them together gives you get the _password
-   expiration date_;
+   the password must be changed. This value is relative to the contents
+   of field #3: summing them together gives you the _password expiration
+   date_;
 6. the _password warning period_, the number of days immediately
    preceding the _password expiration date_ during which the system will
    remind the user that the password is going to expire;
@@ -164,8 +164,8 @@ Each line contains 9 fields:
    abort the login;
 8. the _account expiration date_: past this date, the account is
    considered expired and cannot be used for logging in under any
-   circumstance, even if your login method would not rely on the accoun
-   tpassword, as for SSH public key authentication;
+   circumstance, even if your login method would not rely on the account
+   password, as for SSH public key authentication;
 9. this field is unused and usually empty.
 
 It is important to note that, while fields #3 and #8 are _dates_
@@ -195,8 +195,8 @@ date -I -ud @$(( <date> * 3600 * 24))
 This converts the days back to seconds and then asks `date` to spit out
 the equivalent broken down UTC date in ISO 8601 format. Some system
 tools such as `chage` and `passwd -S` do this conversion for us when
-querying system account, so this snippet is only useful to convert a
-value that does not already reside in `/etc/shadow`.
+querying accounts, so this snippet is only useful to convert a value
+that does not already reside in `/etc/shadow`.
 
 ### /etc/group
 
@@ -207,7 +207,7 @@ group:
     wheel:x:10:root,manu
     […]
 
-Every line define a single group and is composed of the following 4
+Every line defines a single group and is composed of the following 4
 field:
 
 1. the _group name_;
@@ -224,7 +224,7 @@ and filled with an `x` since the real password, if any, resides in
 `/etc/gshadow` contains almost the same information as `/etc/group` with
 two major differences:
 
-* password are actually present as salted hashes;
+* passwords are actually present as salted hashes;
 * it adds a list of administrator members. We'll see this in a moment.
 
 The contents would look like this:
@@ -240,8 +240,9 @@ Each line is again composed of 4 fields:
 3. a comma-separated list of usernames of _group administrators_;
 4. a comma-separated list of usernames of _group members_.
 
-This time, field #2 contains the real hashed password. Field #4 should
-always be synced with field #4 of `/etc/group` and list all members.
+This time, field #2 contains the real hashed password, if any. Field #4
+should always be synced with field #4 of `/etc/group` and list all
+members.
 
 Filed #3 is new: it defines group administrators. These users are group
 members which have the ability to add or remove other members from the
@@ -280,8 +281,8 @@ expire. Since they are rarely used, this is not a concern.
 ## Lifecycles
 
 The next thing we must discuss are the lifecycles of passwords and
-the accounts; that is, the time frames during which they are usable for
-login or not.
+accounts; that is, the time frames during which they are usable to
+login.
 
 Both the password and the account have their own lifecycles, and the two
 are not necessarily identical. This means we may have an active account
@@ -295,7 +296,7 @@ can login with that account or not.
 
 Let's talk about the account lifecycle first. Each account can be in
 just one of two states: it can be either _active_ or _expired_. An
-active account can be used to log in into the system, provided the
+active account can be used to log into the system, provided the
 authentication method we are going to use is usable and that we pass the
 authentication challenge. Conversely, an expired account cannot be used
 for logging in, irrespective of how we would authenticate ourselves. No
@@ -311,7 +312,7 @@ it's expired. It's that simple.
 Account expiration is optional: if a date is not provided, the
 corresponding field will be empty and the account will never expire.
 This is the usual condition for accounts. It makes sense to set an
-expiration date for accounts which are bound to be temrinated unless
+expiration date for accounts which are bound to be terminated unless
 some manual process is enacted.  For example, an external contractor may
 have its account bound to expire when its contract expires.
 
@@ -324,10 +325,10 @@ immediately expire the account.
 `usermod -e` can set the expiration date of an account:
 
 ```sh
-# Set my account to expire at the end of 2020.
+# Set account 'test' to expire at the end of 2020.
 # The date is in ISO 8601 format, but other variations are
 # accepted (i.e. 'today' and 'tomorrow' work).
-usermod -e 2020-12-31 $USER
+usermod -e 2020-12-31 test
 ```
 
 ### Password lifecycles
@@ -347,7 +348,7 @@ can split them in two logical groups:
   is used to enforce a change when a password has been in use for too
   long and can make it expire after a set amount of time;
 * the _passowrd field_ as stored in `/etc/shadow`, field #2. Normally,
-  it will consiste of the output of a password hashing algorithm, but it
+  it will consist of the output of a password hashing algorithm, but it
   can also be set to special values (more below) which can inhibit its
   usability.
 
@@ -382,7 +383,7 @@ password for a specific user. In this case, we get:
     test NP 2020-09-13 -1 -1 -1 -1 (Empty password.)
 
 Remember that some tools or libraries may be configured to reject
-accounts with empty password. For example, SSH can be configured to
+accounts with empty passwords. For example, SSH can be configured to
 disallow logins if an account has no password (`PermitEmptyPasswords`
 option). The Linux-PAM `pam_unix.so` module has a similar option
 (`nullok`). If you really want to use passwordless accounts…
@@ -400,13 +401,12 @@ data-aspect-ratio="1.78494623655914">
 <script type="text/javascript" async src="https://tenor.com/embed.js"></script>
 </div>
 
-…be sure to check that services using it work as intended.
+…be sure to check that services using them work as intended.
 
 Then, an account may have a usable, valid password. This is the usual
 condition for user accounts. The _password field_ will store the hashed
 password. The exact representation of the hash depends on the hashing
-method and more can be read in [crypt(5)][crypt]. `/etc/shadow`
-contains, for example:
+method. `/etc/shadow` contains, for example:
 
     test:$1$ixE/9ivM$.BgDclGsEvrE/Uqd8TS9C1:18518::::::
 
@@ -436,10 +436,7 @@ calculated hash will never match the _password field_. Any other way of
 producing an impossible hash from which the original can be recovered
 would work, but the use of `!` is historical, simple and effective.
 
-Password locking can be used to temporarily freeze logins for unused
-accounts, for example for a contractor whose contract is being renowned.
-We don't delete its account, we simply put it on hold.  This is how a
-locked password looks like:
+This is how a locked password looks like:
 
     test:!$1$ixE/9ivM$.BgDclGsEvrE/Uqd8TS9C1:18518::::::
 
@@ -457,10 +454,10 @@ password. The only difference is that such field will not follow the
 convention for locked passwords: the system will report it as present,
 not as locked.  However, any attempt to use it will fail.  A common use
 for this is for accounts which use alternate authentication schemes
-exclusively, like SSH keys.  If we alredy know an account will only be
-use by an automated remote system to connect and that it will use an RSA
-key, there is no point in also setting a password, which may be used by
-an attacker to compromise the system.
+exclusively, like SSH keys.  If we already know an account will only be
+used by an automated remote system to connect and that it will use an
+RSA key, there is no point in also setting a password, which may be used
+by an attacker to compromise the system.
 
 A very common way of setting an unusable password is to set the
 _password field_ to a single asterisk (`*`):
@@ -493,25 +490,26 @@ included.
 
 ![Password aging information on a timeline][pw_aging]
 
-First, the system tracks the date of the most recent password change.
-Various time frames are then defined as offsets from this moment, given
-as day counts.
+The system tracks the date of the most recent password change.  Various
+time frames are then defined as offsets from this moment, given as day
+counts.
 
 First, it is possible to define an optional _minimum password age_. This
-field gives the number of days during which a password change cannot
-happen. Foe example, after a user changes its password, it may be force
-to keep it for 7 days before it can be changed again. Often, this
-feature is not used and passwords can be changed at will at any moment.
+field gives the number of days immediately after a change during which a
+new change cannot happen. For example, after a user changes its
+password, it may be forced to keep it for 7 days before it can be
+changed again.  Often, this feature is not used and passwords can be
+changed at will at any moment.
 
 Symmetrically, the is also a _maximum password age_. This is a number of
-days that, when summed to the latest password change date, gives us the
-_password expiration date_. After this date, the password will be
+days that, when summed with the latest password change date, gives us
+the _password expiration date_. After this date, the password will be
 expired.  The exact behaviour of trying to login with an expired
 password depends on both this field and on the _password inactivity
 period_, so we'll talk about this in a moment.  This field is also
 optional and not setting it means that the password will never expire
 and thus will never need to be changed (altough the user is still free
-to change it, if they so desire).
+to change it).
 
 For user convenience, it is possible to define a _password warning
 period_. This is the number of days immediately preceding the password
@@ -542,9 +540,8 @@ how we set it, 3 different behaviours can be obtained:
   elapsed since the password expiration date. After that period, the old
   password will no longer be accepted and it will not be possible to
   change it at login time. The only way to set a new password is to
-  contact the administrator and have her set a new password for us. This
-  is the behavior we get by setting the inactivity period to a positive
-  value;
+  contact the administrator. This is the behavior we get by setting the
+  inactivity period to a positive value;
 * _forbidden login_: the old password is no longer accepted as soon as
   it expires, there is no forced-change period. Therefore, you must take
   care to not let it reach its expiration date. This is the behaviour
@@ -560,7 +557,7 @@ again.
 On the system, various applications need to verify the identity of a
 user and the validiity of its associated account. The `login` program
 that lets us grab a virtual terminal is just one of them. `ssh`, `su`,
-`sudo` all need to do the smae thing.
+`sudo` all need to do the same thing.
 
 Instead of coding password and account verification functionalities
 inside every single app, the modern approach is to delegate such checks
@@ -573,23 +570,23 @@ applications, and a series of modules that implement specific checks.
 The advantages of such a system are manyfold:
 
 * since PAM is a shared library used by many programs, updating it or
-its module brings updates and fixes to all clients;
-* the most disparate authentication schemes can be concocted as long as
-the can be used viua the PAM API. Clients are oblivious of how checks
-are done, they simply want to now if it is OK to proceed;
+  its modules brings updates and fixes to all clients;
+* the most various authentication schemes can be concocted as long as
+  they can be used via the PAM API. Clients are oblivious of how checks
+  are done, they simply want to know if it is OK to proceed;
 * PAM is driven by configuration files. Changing these files impacts
-which checks, and in which order, are performed on a client-by-client
-basis. It is possible to have different checks in place for console
-logins with respect to `ssh` logins.
+  which checks, and in which order, are performed on a client-by-client
+  basis. It is possible to have different checks in place for console
+  logins with respect to `ssh` logins.
 
 Since PAM is a large topic, I will not add much details here. I just
 want to introduce the [`pam_unix.so`][pam_unix] module, because it the
-one responsible for checks related to the contants of `/etc/passwd`,
+one responsible for checks related to the contents of `/etc/passwd`,
 `/etc/shadow` and the other files we mentioned.
 
 `pam_unix.so` is usually included among standard system login checks.
 Depending on your PAM configuration, it may or may not allow empty
-passwords. It account-related checks verify that both the password and
+passwords. Its account-related checks verify that both the password and
 the account are not expired: this is the reason why it is important to
 have a non-expired password even if you plan to never use it.
 
@@ -600,7 +597,7 @@ account validity checks, and the password age (but not its value) is
 included. If the password is expired, PAM would return an error,
 preventing `ssh` from logging in.
 
-In this cases, it is better to configured the password to never expire,
+In this case, it is better to configure the password to never expire,
 then set it to an unusable digest such as `*`. As explained before, such
 a digest will never match the output of `crypt` so it is impossible to
 pass password validation. A the same time, this satisfies other checks
@@ -611,7 +608,6 @@ as the password is formally not empty and not locked.
 [passwd]: https://linux.die.net/man/5/passwd
 [shadow]: https://linux.die.net/man/5/shadow
 [gecos]: https://en.wikipedia.org/wiki/Gecos_field
-[crypt]: https://linux.die.net/man/5/crypt
 [pw_aging]: {{ site.baseurl }}/assets/img/pw_aging.png
 [pw_warning]: {{ site.baseurl }}/assets/img/pw_warning.png
 [pam]: http://www.linux-pam.org
