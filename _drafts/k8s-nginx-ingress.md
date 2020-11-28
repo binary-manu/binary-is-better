@@ -521,6 +521,136 @@ W1128 14:04:04.781934       6 controller.go:1180] Unexpected error validating SS
 Note the error message about the lacks of subject alternative names. The
 certificate has been rejected.
 
+### The "good" certificate
+
+To create a new certificate with the appropriate SAN extension, we can
+again employ `openssl` with the `-addext` option:
+
+```sh
+# Generate a new certificate with a SAN of static-site.local
+$ CN=static-site.local
+$ openssl req -new -x509 -nodes -newkey rsa:2048 -out tls.crt -keyout tls.key \
+  -subj "/C=IT/O=Local test/CN=$CN" -addext "subjectAltName=DNS:$CN"
+Generating a RSA private key
+..............................................................................................+++++
+.........................................+++++
+writing new private key to 'tls.key'
+
+# Check that the certificate does contain the SAN
+$ openssl x509 -text -in tls.crt | grep -i -A1 Alternative
+            X509v3 Subject Alternative Name: 
+                DNS:static-site.local
+
+# Replace the secret
+$ kubectl delete secret/static-site
+secret "static-site" deleted
+$ kubectl create secret tls static-site --cert=tls.crt --key tls.key
+secret/static-site created
+```
+
+If we access the site with `curl` now:
+
+```sh
+$ curl --noproxy \* -v -s -k --resolve static-site.local:443:$(minikube ip) \
+    https://static-site.local/static-site > /dev/null
+* Added static-site.local:443:192.168.39.231 to DNS cache
+* Hostname static-site.local was found in DNS cache
+*   Trying 192.168.39.231:443...
+* Connected to static-site.local (192.168.39.231) port 443 (#0)
+[...redacted...]
+* Server certificate:
+*  subject: C=IT; O=Local test; CN=static-site.local
+*  start date: Nov 28 17:56:48 2020 GMT
+*  expire date: Dec 28 17:56:48 2020 GMT
+*  issuer: C=IT; O=Local test; CN=static-site.local
+*  SSL certificate verify result: self signed certificate (18), continuing anyway.
+[..redacted...]
+< HTTP/2 200 
+< date: Sat, 28 Nov 2020 18:05:56 GMT
+< content-type: text/html
+< content-length: 2041
+< last-modified: Sun, 03 Jan 2016 04:32:16 GMT
+< etag: "5688a450-7f9"
+< accept-ranges: bytes
+< strict-transport-security: max-age=15724800; includeSubDomains
+< 
+{ [2041 bytes data]
+* Connection #0 to host static-site.local left intact
+```
+
+The response is a 200 with the expected payload size, and the
+certificate dump clearly reports the data for our certificate.  Notice
+that the `-k` options was used to tell `curl` to accept insecure
+certificates due to self-signing.
+
+## TCP passthrough
+
+Ingresses are designed to handle HTTP(S) traffic, that's why they have
+builtin features like path matching. However, the NGINX ingress does
+support TCP passthrough: it can listen on a specific port and forward
+the plain TCP connection to a target service. This way it's possible to
+use it to control non-HTTP traffic towards services.
+
+The geneal wau to enable this feature is exmplained [in this
+page][nginx-ingress-tcp] and involves config maps and command line
+options. It's worth reading, but thanks to the Heml chart there is a
+much easier way to do that: we can simply add entries to the top-level
+`tcp` value and let the chart take care of the details. Basically, for
+each port to forward, we must add a key/value entry to `tcp` with the
+following format:
+* the key is a string representing the port we want to listen to on the
+host, in decimal form; i.e. `"8123"`;
+* the value is a string like `"namespace/serviceName:servicePort"`,
+defining the namespace and the name of the servicxe that will receive
+the traffic, as well as the port, i.e. `"default/static-site:80"`.
+
+Let's use this feature to expose our static site directly via port 8123.
+Given the format above, when use `helm` to upgrade the ingress release
+while specify an additional value for the TCP entry. All other values
+we specified at install time are kept thanks to `--reuse-values`:
+
+```sh
+$ helm upgrade -n ingress-nginx ingress-nginx --reuse-values \
+    --set "tcp.8123=default/static-site:80"  ingress-nginx/ingress-nginx
+Release "ingress-nginx" has been upgraded. Happy Helming!
+[...redacted...]
+```
+
+Give it a few seconds to settle, then try:
+
+```sh
+$ curl --noproxy \* -v -s http://$(minikube ip):8123/ > /dev/null
+*   Trying 192.168.39.231:8123...
+* Connected to 192.168.39.231 (192.168.39.231) port 8123 (#0)
+> GET / HTTP/1.1
+> Host: 192.168.39.231:8123
+> User-Agent: curl/7.73.0
+> Accept: */*
+> 
+* Mark bundle as not supporting multiuse
+< HTTP/1.1 200 OK
+< Server: nginx/1.9.9
+< Date: Sat, 28 Nov 2020 19:38:13 GMT
+< Content-Type: text/html
+< Content-Length: 2041
+< Last-Modified: Sun, 03 Jan 2016 04:32:16 GMT
+< Connection: keep-alive
+< ETag: "5688a450-7f9"
+< Accept-Ranges: bytes
+< 
+{ [2041 bytes data]
+* Connection #0 to host 192.168.39.231 left intact
+```
+
+And the usual site page is back, served directly from the webserver
+running _inside_ the container.
+
+## That's all
+
+NGINX and the NGINX K8S ingress have much more features that were shown
+here. But these instructions should be enough to get you started with
+ingresses. Thanks for reading.
+
 <!-- Links -->
 [helm-releases]: https://github.com/helm/helm/releases
 [minikube-releases]: https://github.com/kubernetes/minikube/releases
@@ -530,3 +660,4 @@ certificate has been rejected.
 [archwiki-libvirt]: https://wiki.archlinux.org/index.php/Libvirt
 [k8s-ref-ingress]: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.19/#ingress-v1-networking-k8s-io
 [opensuse-libvirt]: https://doc.opensuse.org/documentation/leap/virtualization/html/book.virt/cha-vt-installation.html#sec-vt-installation-kvm
+[nginx-ingress-tcp]: https://kubernetes.github.io/ingress-nginx/user-guide/exposing-tcp-udp-services/
