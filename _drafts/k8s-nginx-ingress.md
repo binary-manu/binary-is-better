@@ -1,6 +1,6 @@
 ---
 # vi: set tw=72 et sw=2 sts=-1 autoindent fo=troqan :
-title: Using the Kubernetes NGINX ingress
+title: A hands-on introduction to the K8S NGINX ingress feat. Minikube
 category: Kubernetes
 ---
 
@@ -13,10 +13,12 @@ charts.
 
 ## Setting up Minikube
 
-Arch provided packages for all the needed tools, so we can simply
+Arch provides packages for all the needed tools, so we can simply
 install them via:
 
-    sudo pacman -S --needed --noconfirm minikube kubectl helm
+```sh
+$ sudo pacman -S --needed --noconfirm minikube kubectl helm
+```
 
 In case another distribution is in use, you can get the latest binaries from
 their release pages:
@@ -24,12 +26,12 @@ their release pages:
 * [Kubectl][kubectl-releases]
 * [Minikube][minikube-releases]
 
-This is epsecially important if your distro comes with older versions of
-these tools, as some options have been deprecated in recent releases).
+This is especially important if your distro comes with older versions of
+these tools, as some options have been deprecated in recent releases.
 As a rule, I will use command switches which are non-deprecated in the
 latest releases available in Arch at the time of writing:
 
-```
+```sh
 $ minikube version
 minikube version: v1.15.1
 commit: 23f40a012abb52eff365ff99a709501a61ac5876-dirty
@@ -48,23 +50,28 @@ one cannot simply choose random versions. To keep it simple, we will ask
 Minikube to install a K8S cluster following the same version as our
 local `kubectl`.
 
-_NOTE: some terminal output snippets produced by `minikube` contain
+_NOTE 1: some terminal output snippets produced by `minikube` contain
 emojis. Be sure to have a font that can render them on your system. On
 Arch Linux, installing `noto-fonts-emoji` from the AUR suffices._
 
-_NOTE: I will assume that the Minikube kvm2 backend can work on the
-local system. If not so, Minikube will be unable to create the VM. You
-can either switch to a different driver or install the required
-packages. I won't get into this setup because it wouldn't fit the
-intended length of this article and would be distro-specific. Arch users
-may refer to [this ArchWiki page][archwiki-libvirt]. OpenSUSE users may
-refer to [this page][opensuse-libvirt]._
+_NOTE 2: in the examples below, the `kvm2` Minikube backend is used to
+create a VM that hosts the K8S cluster, backed by `libvirt` and `qemu`.
+Minikube supports other backends, so if `kvm2` does not work on your
+systemm you may try requesting a different backend os just omit the
+`--driver` options to let Minikube choose one based on what is
+installed. If no backend works out of the box, installing `libvirt` can
+fix the issue. Arch users may refer to [this ArchWiki
+page][archwiki-libvirt].  OpenSUSE users may refer to [this
+page][opensuse-libvirt]._
+
+Let's start a Minkube cluster:
 
 ```sh
-$ K8S_VERSION=$(kubectl version --client=true | sed -E 's/.*GitVersion:"([^"]+)".*/\1/')
+$ K8S_VERSION=$(kubectl version --client=true |
+    sed -E 's/.*GitVersion:"([^"]+)".*/\1/')
 $ echo $K8S_VERSION 
 v1.19.4
-$ minikube  start --driver=kvm2 --kubernetes-version="$K8S_VERSION"
+$ minikube start --driver=kvm2 --kubernetes-version="$K8S_VERSION"
 😄  minikube v1.15.1 on Arch 
 ✨  Using the kvm2 driver based on user configuration
 💾  Downloading driver docker-machine-driver-kvm2:
@@ -84,7 +91,7 @@ $ minikube  start --driver=kvm2 --kubernetes-version="$K8S_VERSION"
 ```
 
 At this point, the cluster is up but the NGINX ingress is not installed
-by default. This is true in general for Mminikube clusters as well as
+by default. This is true in general for Minikube clusters as well as
 for clusters installed via `kubeadm`. Other cluster deployment methods
 may install it automatically.
 
@@ -100,7 +107,7 @@ $ minikube addons enable ingress
 🌟  The 'ingress' addon is enabled
 ```
 
-Well, if you _did_ run it... you can simply turn it off with:
+Well, if you _did_ run it… you can simply turn it off with:
 
 ```sh
 $ minikube addons disable ingress
@@ -113,21 +120,24 @@ Now, back to the manual installation. The [official ingress install
 guide][install-ingress-with-helm] describes how to install the ingress
 using its Helm chart. However, following those commands without
 customizing the chart values configure the ingress to expect an external
-LoadBalancer, which we don't want to use. Also, it creates A deployment
+LoadBalancer, which we don't want to use. Also, it creates a deployment
 resource by default.
 
-What we want to do, instead, is create a DaemonSet so that each worker
-gets its own ingress pod handling its incoming traffic. Also, that pods
+What we want to do, instead, is to create a DaemonSet so that each worker
+gets its own ingress pod handling its incoming traffic. Also, those pods
 should listen on ports 80 and 443 on the host itself, rather than
 expecting an external LB to do it.
 
 Thankfully, we can set a couple of values to tell the chart to do
 exactly that:
 
-* `controller.hostPort.enabled` can be set to true to have the ingress
+* `controller.hostPort.enabled` can be set to `true` to have the ingress
   listen on host ports directly;
 * `controller.kind` can be set to `DaemonSet` to override the default
   resource type.
+
+The chart will be installed to its own namespace via `-n` and we also
+ask Helm to create it for us using `--create-namespace`:
 
 ```sh
 $ helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
@@ -159,7 +169,9 @@ You can watch the status by running 'kubectl --namespace ingress-nginx get servi
 
 While we wait for the ingress to come up, we need some service to act as
 the target of out traffic.  For this, we can use a ready-made Docker
-image providing a simple static website: `prakhar1989/static-site`.
+image providing a simple static website: `prakhar1989/static-site`
+(thanks to the author of that image, so I didn't have to make one
+myself 👏).
 
 Let' create a deployment for this image, as well as a ClusterIP service
 that exposes it inside the cluster:
@@ -172,11 +184,11 @@ $ kubectl create service clusterip static-site --tcp=80:80
 service/static-site created
 ```
 
-Let's test the image is running and the service working by accessing it
-via a port forward:
+As a test that everything is OK, we use `kubectl`'s port forwarding to
+access the container and test that web pages are being served:
 
 ```sh
-kubectl port-forward service/static-site 8080:80
+$ kubectl port-forward service/static-site 8080:80
 Forwarding from 127.0.0.1:8080 -> 80
 Forwarding from [::1]:8080 -> 80
 ```
@@ -246,14 +258,14 @@ annotations:
   traffic pertaining to this ingress resource should be handled by the
   ingress controller identified by the `nginx` class. The NGINX ingress
   Helm chart marked the installed ingress controller with this class for
-  us, so we can simply refer to it in our resources.
+  us, so we can simply refer to it in our resources;
 * `nginx.ingress.kubernetes.io/rewrite-target: /` controls URL
   rewriting. Requests coming to the ingress controller for our static
   site will be rooted under `/static-site`, but the web-server running
   inside the image we deployed earlier does not know anything about this
   prefix, it expects pages to sit under `/`. So we must strip the prefix
   from the path before forwarding the request to the pod. This
-  annotations tells the controller do that.
+  annotations tells the controller to do that.
 
 The `spec` part defined the mapping between incoming HTTP requests and
 the services that should handle them. There is a single path in the
@@ -269,13 +281,13 @@ The previous ingress resource only matched incoming requests to services
 using the URL path component. The host name used in the URL, and thus
 sent in the request using the `Host` header, was not involved in
 selecting a backend. So, as long as the path matches the specified
-prefix, out `static-site` service will get the traffic for all host
-names. We can check for this using curl:
+prefix, our `static-site` service will get the traffic for all host
+names. We can check for this using `curl`:
 
 ```sh
 # Access the page using the IP as the hostname, effectively sending
 # a Host header set to the Minikube IP. The actual response is discarded
-to have a better view of curl debug lines.
+# to have a better view of curl debug lines.
 $ curl --noproxy \* -v -s http://$(minikube ip)/static-site > /dev/null
 *   Trying 192.168.39.231:80...
 * Connected to 192.168.39.231 (192.168.39.231) port 80 (#0)
@@ -329,13 +341,23 @@ $ curl --noproxy \* -v -s --resolve static-site.local:80:$(minikube ip) \
 As can be seen, the `Host` header is different in the two calls, but the
 response was still a 200 with a payload of 2041 bytes in both cases.  In
 the second test, we used `curl`'s `--resolve` option which causes the
-hostname `static-site.local` to resolve to the Minikube IP withoutu the
+hostname `static-site.local` to resolve to the Minikube IP without the
 need to patch `/etc/hosts` or add a DNS entry.
+
+_Hint: if you prefer using your browser to test the URL's, there is a
+trick that makes Firefox resolve any domain name to a fixed IP. Open
+Firefox, then type `about:config` in the address bar. Dismiss the
+warning message and then use the search box to look up the property
+`network.dns.forceResolve`. Place the address printed by  `minikube ip`
+in the value field and confirm the change using the `Save ` button. From
+now on, all addresses opened in Firefox will resolve to the Minikube
+VM address and you can paste URL's employing our fake domain name.
+Remember to clear the property value when done._
 
 Of course, NGINX can perform request filtering based on hostnames. We
 just have to add an `host` field to our rules in the ingress definition.
-If we want our site to only be available as `static-site.local`, we
-pacth the resource as follows:
+If we want our site to only be available as `static-site.local`, we can
+patch the resource as follows:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -347,6 +369,7 @@ metadata:
     kubernetes.io/ingress.class: "nginx"
 spec:
   rules:
+    # Note the new host field
     - host: static-site.local
       http:
         paths:
@@ -366,7 +389,7 @@ $ kubectl apply -f ingress.yaml
 ingress.networking.k8s.io/static-site configured
 ```
 
-and now repeat out tests with `curl`:
+and repeat out tests with `curl`:
 
 ```sh
 $ curl --noproxy \* -v -s http://$(minikube ip)/static-site > /dev/null
@@ -418,14 +441,14 @@ Note that this time the request containing the IP in the URL returned
 
 ### Adding TLS
 
-Until now, we have used plain HTTP both between the client and the
+Until now, we have been using plain HTTP both between the client and the
 ingress and between the ingress and the target service. NGINX can do
-_TLS temrination_, meaning it receives HTTPS requests, perform TLS
-handshake, and then forward the plain HTTP request to the final service.
-This way, there is a single point where certificates and key must be
-provisioned: the ingress controller itself. Services can run over plain
-HTTP, while all external traffic, which terminates at the ingress, is
-secured.
+_TLS termination_, meaning it receives HTTPS requests, performs TLS
+handshake, and then forwards the plain HTTP request to the final service
+and relays back the response.  This way, there is a single point where
+certificates and keys must be provisioned: the ingress controller itself.
+Services can run over plain HTTP, while all external traffic, which
+terminates at the ingress, is secured.
 
 Before we can enable TLS, we must prepare a certificate. This step must
 be performed with care because the ingress seems to be picky about the
@@ -433,13 +456,14 @@ certificates it accepts. In particular, it refuses certificates
 that use the common name to identify the expected host name of the
 server. It pretends that certificates also contain at least one subject
 alternative name, even if the only one is identical to the common name.
-We will first generate an "invalid" certificate without any SAN's, to
-trigger the error, then, we'll create a good certificate with a SAN to
+We will first generate an "invalid" certificate without any SAN's to
+trigger the error, then we'll create a good certificate with a SAN to
 rectify the situation.
 
 ### The "bad" certificate
 
-Let's issue a self-signed certificate with OpenSSL:
+Let's issue a self-signed certificate with OpenSSL (note that the
+private key is stored unencrypted):
 
 ```sh
 $ openssl req -new -x509 -nodes -newkey rsa:2048 -out tls.crt -keyout tls.key \
@@ -451,8 +475,8 @@ writing new private key to 'tls.key'
 -----
 ```
 
-For the ingress controller to be able to read out certificate and key,
-we must load them to our cluster. We must use a secret for this
+For the ingress controller to be able to use the certificate and the
+key, we must load them to our cluster. We must use a secret for this
 purpouse, which will then be referenced from the ingress resource.
 `kubectl` provides a shortcut command to create a well-formed secret
 suitable for use with TLS:
@@ -460,8 +484,6 @@ suitable for use with TLS:
 ```sh
 $ kubectl create secret tls static-site --cert=tls.crt --key tls.key
 secret/static-site created
-
-$ kubectl get -o yaml secrets/static-site
 ```
 
 In order to enable TLS for our ingress, we must edit the resource to add
@@ -504,7 +526,7 @@ Note that the new `tls` object is a list, where each entry defines:
 * `hosts`: a list of expected host names to which the certificate
   applies. We have set it to be equal to the `host` field inside our
   only rule;
-* `secretName`: the name of a secret that hold the certificate and key
+* `secretName`: the name of a secrets that hold the certificate and key
   for server-side TLS. It's set to the name of the secret we created
   earlier.
 
@@ -513,12 +535,12 @@ itself to enable TLS. However, if we now dump the logs of the ingress
 controller pod:
 
 ```sh
-$ POD_NAME=$(kubectl get pods -n ingress-nginx | tail -n 1 | cut -d " " -f 1)
+$ POD_NAME=$(kubectl -n ingress-nginx get pods -o jsonpath='{$.items[0].metadata.name}')
 $ kubectl logs -n ingress-nginx "$POD_NAME" | grep -i 'Common Name'
 W1128 14:04:04.781934       6 controller.go:1180] Unexpected error validating SSL certificate "default/static-site" for server "static-site.local": x509: certificate relies on legacy Common Name field, use SANs or temporarily enable Common Name matching with GODEBUG=x509ignoreCN=0
 ```
 
-Note the error message about the lacks of subject alternative names. The
+Note the error message about the lack of subject alternative names. The
 certificate has been rejected.
 
 ### The "good" certificate
@@ -579,8 +601,8 @@ $ curl --noproxy \* -v -s -k --resolve static-site.local:443:$(minikube ip) \
 ```
 
 The response is a 200 with the expected payload size, and the
-certificate dump clearly reports the data for our certificate.  Notice
-that the `-k` options was used to tell `curl` to accept insecure
+certificate dump clearly reports the data for our certificate.  Note
+that the `-k` option was used to tell `curl` to accept insecure
 certificates due to self-signing.
 
 ## TCP passthrough
@@ -591,23 +613,24 @@ support TCP passthrough: it can listen on a specific port and forward
 the plain TCP connection to a target service. This way it's possible to
 use it to control non-HTTP traffic towards services.
 
-The geneal wau to enable this feature is exmplained [in this
+The geneal way to enable this feature is explained [in this
 page][nginx-ingress-tcp] and involves config maps and command line
-options. It's worth reading, but thanks to the Heml chart there is a
+options. It's worth reading, but thanks to the Helm chart there is a
 much easier way to do that: we can simply add entries to the top-level
 `tcp` value and let the chart take care of the details. Basically, for
 each port to forward, we must add a key/value entry to `tcp` with the
 following format:
-* the key is a string representing the port we want to listen to on the
-host, in decimal form; i.e. `"8123"`;
+* the key is a string representing the host port we want to listen on,
+  in decimal form (i.e. `"8123"`);
 * the value is a string like `"namespace/serviceName:servicePort"`,
-defining the namespace and the name of the servicxe that will receive
-the traffic, as well as the port, i.e. `"default/static-site:80"`.
+  defining the namespace and the name of the service that will receive
+  the traffic, as well as the port (i.e. `"default/static-site:80"`).
 
 Let's use this feature to expose our static site directly via port 8123.
-Given the format above, when use `helm` to upgrade the ingress release
-while specify an additional value for the TCP entry. All other values
-we specified at install time are kept thanks to `--reuse-values`:
+It is not required to uninstall and reinstall the ingress Helm chart to
+set the new values: `helm` has an `upgrade` command to upgrade a release
+while accepting additional values.  All other values we specified at
+install time are kept thanks to `--reuse-values`:
 
 ```sh
 $ helm upgrade -n ingress-nginx ingress-nginx --reuse-values \
