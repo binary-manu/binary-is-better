@@ -244,7 +244,7 @@ $ minikube ip
 192.168.39.231
 ```
 
-and point your browser to `http://<output of minikube ip>/static_site`.
+and point your browser to `http://<output of minikube ip>/static-site`.
 You should see the same page as before.
 
 Let's break down the ingress definition. First, it comes with two
