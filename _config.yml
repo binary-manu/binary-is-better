@@ -3,7 +3,6 @@ author: Emanuele Giacomelli
 description: Personal notes about my software developer things
 baseurl: "/binary-is-better"
 url: "https://binary-manu.github.io"
-email: "binary-is-better@altmails.com"
 theme: minima
 plugins:
     - jekyll-feed
