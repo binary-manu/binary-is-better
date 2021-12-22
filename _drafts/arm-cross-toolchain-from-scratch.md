@@ -24,31 +24,28 @@ heavily constrained systems, usually because of two main reasons:
   compiling even moderately large programs painfully slow. Think about
   the earliest Raspberry Pi models.
 
-A cross toolchain enables us to use a separate system with plenty of
-memory, CPU cores, storage and a powerful OS to build software for the
-target. The outputs will then be copied to the target (using a
-programmer, an SD card or whatever the target boots from) and run.
+A cross toolchain allows using a separate system with plenty of memory,
+CPU cores, storage and a powerful OS to run the build.  The outputs will
+then be copied to the target using a programmer, an SD card or whatever
+the target boots from, and run.
 
 A typical scenario involves using an x86-64 system to build software for
 some low-power ARM system. And often, this software will consist of a
 Linux-based system especially crafted for the task at hand. Many steps
-are required to build such complete, albeit small, system:
+are required to build such complete, albeit small, system. We need:
 
-* we need a bootloader to take off after the hardware has initialized
-  itself in order to load the kernel and other stuff (device tree blobs,
-  initrd) into memory;
-* we need a Linux kernel supporting the target architecture and the
-  devices present on the board;
-* we need a set of basic libraries that offer standard services, such as
-  standard C and C++ libraries;
-* we need standard tools that make up the skeleton of the system: an
-  init system, a shell, utilities like `cp`, `ls` and more;
-* we need fundamental files used by libraries and tools and runtime,
-  such as `/etc/fstab`, `/etc/passwd`, `/etc/inittab`.
+* a bootloader to take off after the hardware has initialized itself, to
+  load the kernel, device tree blobs and initial ramdisks into memory;
+* a Linux kernel supporting the target architecture and the devices
+  present on the board;
+* a set of basic libraries, such as standard C and C++ libraries;
+* standard tools that make up the skeleton of the system: an init
+  system, a shell, utilities like `cp`, `ls`, …;
+* essential files used by libraries and tools and runtime, such as
+  `/etc/fstab`, `/etc/passwd`, `/etc/inittab`.
 
-However, the first step to be able to build any of the above for our
-embedded system is to grab a cross-toolchain that targets it. With that,
-we'll be able to build the bootloader, the kernel and so on.
+However, the first step to be able to build any of the above for an
+embedded system is to grab a cross-toolchain that targets it.
 
 While there are many resources about building cross-compiled kernels,
 bootloaders and basic utilities, there is not much information about
@@ -79,8 +76,8 @@ precompiled one.
 
 Unfortunately, finding accurate information on this topic seems a little
 difficult. Your best bet seems to be the [Cross Linux From
-Scratch][clfs] book. It shows the steps requires to build a cross
-toolchain: but it has a number of limitations:
+Scratch][clfs] book. It shows the steps required to build a cross
+toolchain, but it has a number of limitations:
 
 * the latest stable version dates back to 2014;
 * it is written for many architectures, but there is no ARM;
@@ -99,8 +96,8 @@ U-Boot, the Linux kernel, Busybox and an Hello World C++ sample running
 on top of that), the whole process is about _learning_. This means that
 there are no guarantees that the toolchain does not contain some subtle
 bugs that may break specific packages. Also, it is likely not as well
-optimized as it could and the output target code could be suboptimal.
-You should definitely _not_ use it for anything serious.
+optimized as it could and output code could be suboptimal.  You should
+definitely _not_ use it for anything serious.
 
 That being said, let's roll up our sleeves and start building.
 
@@ -110,14 +107,13 @@ We will build a cross-toolchain targeting 32-bit ARM processors, but
 hosted on a AMD64 system. The latest available versions of GCC, glibc
 and the GNU binutils are used. The host system is Arch Linux and we'll
 use some of its libraries when building GCC (such as MPFR and GMP). The
-final toolchain will be relocatable, meaning you can move it where you
-like on your filesystem and it will still find include and library
-folders correctly.
+final toolchain will be relocatable, meaning you can move it whereever
+you like and it will still find include and library folders correctly.
 
 ## Prepare the compilation tree and an isolated shell
 
-The very first thing to do is ensuring that our system has essential
-packages for development installed:
+The very first thing to do is ensuring that the host system has
+essential development packages installed:
 
 ```bash
 sudo pacman -S --noconfirm --needed base-devel
@@ -125,26 +121,22 @@ sudo pacman -S --noconfirm --needed base-devel
 
 Both LFS and CLFS create a new unprivileged user that is employed to
 build packages, guaranteeing the maximum isolation between the built
-packages and the host system. Using you current user may raise
-issues because most build operations react to environment variables. For
-example, when extracting headers from the Linux kernel (a step that is
-needed to build glibc) the build system uses the `ARCH` variable to
-determine the architecture for which header files should be exported. If
-by chance you happen to have variables in your environment that clash
-with what build systems expect, you may inadvertently alter the build
-process.
+packages and the host system. Using our current user may raise issues,
+because most build operations react to environment variables.  If by
+chance some variables in our environment clash with parameters build
+systems expect, we may inadvertently alter the build.
 
-However, creating a new user for that looks a bit overkill to me. By
-using `env` and appropriate shell options, we can simply run a new
-instance of our shell with a clean environment.
+However, creating a new user for that looks a bit overkill to me. A
+simpler approach involves `env` and appropriate shell options to run a
+new shell in a clean environment.
 
-We'll keep all the sources and compiled artifacts under a single
-directory tree. You can place it everywhere you like, although it should
-be on a POSIX filesystem with at least 10GiB of free space. I used
+Sources and compiled artifacts are kept under a single directory tree.
+You can place it everywhere you like, although it should be on a POSIX
+filesystem with at least 10GiB of free space. I used
 `~/projects/embedded`. This directory will be referenced as `$CROSSDIR`.
 
-Inside this folder, create a new file `activate.bash`, make it executable, and
-copy the following code inside it.
+Inside this folder, create a new file `activate.bash`, make it
+executable, and paster the following code inside:
 
 ```bash
 #!/usr/bin/env bash
@@ -167,7 +159,7 @@ exec env -i \
   bash --norc +h
 ```
 
-What this file does is to launch a new instance of `bash` while purging
+What this file does is launching a new instance of `bash` while purging
 the current environment of unwanted items:
 
 * `env` is a tool that modifies the environment before launching a
@@ -176,23 +168,21 @@ the current environment of unwanted items:
 * `-i` causes `env` the create an initially empty environment for the
   new process;
 * variable definitions in the form `VAR=VALUE`, like `HOME="$HOME"`,
-  simply reintroduce some variables from the current environment into the
-  new process environment. A completely empty environment is not
-  functional, because most applications expect a minimal set of standard
-  variables to be available, such as `HOME`, `USER`, and so forth. We
-  either copy them from the current environment (so that the new shell
-  will see the same user and home we are currently using) or set them
-  anew. Some of this variables, like `ARCH` or `TARGET_TRIPLET`, will be
-  used and explained later;
-* `bash --norc +h` launches a new instance of bash, which is asked to avoid
-  executing its usual startup files `/etc/bash.bashrc` and `~/.bashrc`
-  by means of `--norc`. Without this option, even if the environment is
-  clear, stuff could still be added by code contained in those files.
-  `+h` disables command hashing as recommended by LFS [environment
-  setup][lfs-envsetup].
+  simply add some variables into the new process environment.  A
+  completely empty environment is not functional: most applications
+  expect a minimal set of standard variables to be available, such as
+  `HOME` and `USER`. They are either copied them from the current
+  environment (so that the new shell sees the same values as the current
+  shell) or set to specific values.  Some of this variables, like `ARCH`
+  or `TARGET_TRIPLET`, will be used and explained later;
+* `bash --norc +h` launches a new instance of `bash`, which is asked to
+  avoid executing its usual startup files `/etc/bash.bashrc` and
+  `~/.bashrc` by means of `--norc`. Without this option, even if the
+  environment is clear, stuff could still be added by code contained in
+  those files.  `+h` disables command hashing as recommended by LFS
+  [environment setup][lfs-envsetup].
 
-At this point, we can start our new, pristine shell by running this
-file:
+Start a new, pristine shell by running:
 
 ```bash
 ./activate.bash
@@ -201,32 +191,31 @@ file:
 A call to `printenv` will confirm that the environment is almost empty.
 There are a few thing to note here:
 
-* the `PS1` prompt contains the `(cross)` marker to remind us the we are
-not working in our usual environment;
+* the `PS1` prompt contains the `(cross)` marker as a reminder that this
+  is not our usual environment;
 * there is no `DISPLAY`, so X apps will not work; use a regular terminal for
   that;
 * there is no `/bin` in the `PATH`, as we assume that our host system
-(Arch Linux) is [usrmerged][usrmerge];
+  (Arch Linux) is [usrmerged][usrmerge];
 * a custom variable `TOOLS` is initialized to point to the subdirectory
-  `mytoolchain/tools`. This is where our compiled toolchain will be
-  placed. Later, its `bin` subdirectory is also added to the `PATH`.
+  `mytoolchain/tools`. This is where the compiled cross-toolchain will
+  be placed. Its `bin` subdirectory is also added to the `PATH`.
 
 ## Grab the sources
 
-To build a complete toolchain, we will need the following:
+To build a complete toolchain, we need the following:
 
 * the [GNU binutils][binutils], which comprise the assembler (`as`), the
   link editor (`ld`) and a bunch of useful extras;
-* the [GNU Compiler Collection (GCC)][gcc], which gives us the C and
-  C++ compilers, as well as an implementation of the C++ standard
-  library;
+* the [GNU Compiler Collection (GCC)][gcc], providing C and C++
+  compilers, as well as an implementation of the C++ standard library;
 * a C standard library. Unlike the C++ library, this is not bundled with
-  GCC and we get to choose which one to use among a number of choices
-  (glibc, musl, ...). To keep things simple, we'll be using the GNU C
-  Library, [glibc][glibc], although it will not result in the smallest
-  programs for our target system. Other C libraries can help producing
-  smaller final executables, but this level of optimization is beyond
-  the scope of this article.
+  GCC and we get to choose one among a number of choices (glibc, musl,
+  …).  To keep things simple, we'll be using the GNU C Library,
+  [glibc][glibc], although it will not result in the smallest programs
+  for our target system. Other C libraries can help producing smaller
+  final executables, but such level of optimization is beyond the scope
+  of this article.
 * the [Linux kernel][linux] headers, since glibc depends on them when
   built to run on a Linux system.
 
@@ -267,32 +256,31 @@ We should end up with a file tree like this:
 
 ## Understand the build order
 
-Now that we have the sources, we need to build each piece in the correct
-order. Ideally, we would like to find a linear build order for all our
-pieces, compile each one once, and be done. 
+The sources being available, all pieces must be built in the correct
+order.  Ideally, there should be a linear build order so that each item
+is compiled only once.
 
 This looks simple in theory:
 
-* first, we build cross-binutils. These tools will handle the binary
-  format of the _target_ (ARM), but will otherwise run and use libraries
-  from the _host_ (x86-64). We only need a native x86-64 compiler to
-  build them, so we can do this right away with our local system
-  compiler;
-* Linux kernel headers do not need to be built at all, the must simply
-  be copied somewhere where the cross-compiler will find
-  them, so again we can do this step right away;
-* at this point we _could_ build the cross-GCC: again, ideally this
-  package emits code for the target but only depends on libraries or
-  headers from the host;
-* we can now use the cross-GCC to build glibc for the target;
-* and we are done.
+1. first, the cross-binutils. These tools will handle the binary format
+   of the _target_ (ARM), but will otherwise run and use libraries from
+   the _host_ (x86-64). Only a native x86-64 compiler is required to
+   build them, so we can do this right away with our local system
+   compiler;
+2. Linux kernel headers do not need to be built at all, they are simply
+   copied somewhere the cross-compiler will find them, so again
+   we can do this step right away;
+3. at this point we _could_ build the cross-GCC: again, ideally this
+   package emits code for the target but only depends on libraries and
+   headers from the host;
+4. use the cross-GCC to build glibc for the target.
 
 Unfortunately, this is not possible.
 
 As explained by [LFS][how-lfs] and [crosstool-ng][how-crosstool-ng],
 there is a circular dependency between GCC and glibc: glibc is a _target
 library_, so it must be compiled with a cross compiler for the target
-system and obviously depends on our cross-GCC. However, some components
+system and obviously depends on cross-GCC. However, some components
 of GCC (such as `libgcc` and `libstdc++`) depend on the C library of the
 target. This creates a dependency loop: we need a cross-GCC to build
 glibc, but without a built glibc we cannot build a cross-GCC. This
@@ -314,7 +302,7 @@ the missing features and that does not require a C library in place.
 Fortunately, glibc fits this scenario.
 
 Therefore, we can break free by first building a bootstrap compiler,
-then using it to compile glibc, then _recompiling GCC again_, this time by
+using it to compile glibc, then _recompiling GCC again_, this time by
 telling it that a target C library is available, thus building the full
 thing. This second GCC build is called the _final compiler_, and is what
 will become part of our toolchain. The bootstrap compiler will be thrown
@@ -342,21 +330,13 @@ Notes][how-lfs]:
 > build libstdc++. But this last library will lack the same
 > functionalities as libgcc. 
 
-To check this myself, I have tried rebuilding glibc with the final
-compiler and then compared some libraries between the two builds. The
-only ELF sections that changed between the two where related to debug
-stuff, but code and data sections were identical. Those changes are
-likely caused by line shifts caused by the expansion of extra macros
-triggered by the full build, causing line numbers to change in the two
-builds.
-
 Our final build order therefore is:
 
-* binutils;
-* bootstrap GCC;
-* Linux kernel headers;
-* glibc;
-* final GCC.
+1. binutils;
+2. bootstrap GCC;
+3. Linux kernel headers;
+4. glibc;
+5. final GCC.
 
 ## Build the binutils
 
@@ -380,7 +360,7 @@ placed alongside the sources. The GNU build system also supports
 _out-of-tree_ builds, where basically we execute `configure && make` from
 a different folder than the one holding the sources. However, depending
 on the package, doing an out-of-tree build can be either recommended or
-mandatory, and notably GCC falls in this last case. As GCC docs say:
+mandatory, and notably GCC falls in this category. As GCC docs say:
 
 > First, we highly recommend that GCC be built into a separate directory
 > from the sources which does not reside within the source tree. This is
@@ -390,7 +370,7 @@ mandatory, and notably GCC falls in this last case. As GCC docs say:
 
 Since there should be no negative effects in doing an out-of-tree build
 even when there is no explicit requirement to do so, I opted to build
-every package in this way. The `build` folder is a sibling of the sources
+every package this way. The `build` folder is a sibling of the sources
 folder.
 
 Now, let's break down the `configure` options and the reasons behind them.
@@ -406,10 +386,7 @@ autotools-based builds expect. It serves two main purposes:
 The second point can be problematic because it means that, once built,
 an app will expect to be installed under a specific path and therefore
 it cannot be moved elsewhere on the filesystem, because it will still
-look for its bits and pieces under the original path. For the binutils,
-and `ld`, in particular, this would mean that the linker would search
-for libraries to link in hardwired paths, even if you move it away from
-the installation prefix.
+look for its bits and pieces under the original path.
 
 Thankfully, binutils (but also GCC) developers have gone through lengths
 to ensure that we can build _relocatable_ toolchains. A program is
@@ -421,17 +398,17 @@ executable and them moving from there using relative paths.
 `binutils-2.37/libiberty/make-relative-prefix.c`):
 * it takes the name of the executable as passed to the command
   invocation (its `argv[0]`);
-* if it's just a program name (i.e. `ld`), it looks for it in the
-  `PATH` to get the full path;
+* if it's just a program name (i.e. `ld`), it looks for it in the `PATH`
+  to get the full path;
 * if it's a relative path, it resolves it to the full path using the
   current working directory;
 * otherwise it's used verbatim;
-* last, resolve links so that we get the pathname of the real
-  executable. This is essential to reach the real place where the app
-  is placed, even if the program is called through a link.
+* resolve links to get the pathname of the real executable. This is
+  essential to reach the real place where the app is placed, even if the
+  program is called through a link.
 
 If an applications is relocatable, the prefix is not that important
-anymore. However, when running `make install DESTDIR=$DESTDIR`, it is
+anymore. However, when running `make install DESTDIR="$DESTDIR"`, it is
 still used to compute paths, so that things gets installed under
 `$DESTDIR/$PREFIX` An empty prefix ('') (which I copied from the configuration
 switches used for the official [ARM toolchain][arm-toolchains]) means
@@ -441,8 +418,8 @@ that no prefix at all is used and files would be placed under `$DESTDIR/bin`,
 Now, to `with-sysroot`. A _sysroot_ is a prefix under which a toolchain
 program (`ld` in this case, but it also applies to `gcc`) expects to be
 able to find include files and libraries for the target, in our case,
-for ARM.  This is where we will install things like the C library and
-additional libraries we may want to bundle with our toolchain.
+for ARM.  This is where we will install things, like the C library,
+which pertain to the target.
 
 For the linker to know where the sysroot is, we have two options:
 
@@ -450,13 +427,13 @@ For the linker to know where the sysroot is, we have two options:
   invocation. This must also include any calls made to `ld` by other
   tools higher in the toolchain and is easy to forget about;
 * we can specify the default sysroot at build time and have `ld`
-  remember it. We can always override it on a per-call basis using
+  remember it. It can always be overridden on a per-call basis using
   `--sysroot`, but at least the default behavior will be sane even
   without it. This is what `--with-sysroot` does.
 
 Forgetting to pass `--with-sysroot` when building _and_ also forgetting
 to use `--sysroot` when calling the cross-linker will cause it to search
-for target libraries on default paths _on the host_, like `/usr/lib/`.
+for target libraries under default paths _on the host_, like `/usr/lib/`.
 This is not what we want as libraries there are compiled for the host
 architecture.
 
@@ -467,7 +444,7 @@ to `prefix`if not overridden), `ld` will automatically compute its path
 using the executable path. This means that effectively the sysroot moves
 along with the rest of the toolchain. Without this behaviour, we would
 end up with a toolchain that is not actually relocatable, because it
-would search for libraries under a fixed path.
+would search for libraries under a fixed sysroot path.
 
 The build system accepts various forms for the sysroot path for it to be
 considered _under the exec-prefix_ and thus relocatable, which can be
@@ -517,7 +494,7 @@ fi
 ```
 
 I chose to use the form that starts with the literal `${exec_prefix}`.
-Our sysroot will be placed under the `sysroot` folder under the
+The sysroot will be placed under the `sysroot` folder under the
 exec-prefix and thus will be relocated with the rest of the tools.
 
 `--target="$TARGET_TRIPLET"` is simple: it specifies the _machine
@@ -539,7 +516,7 @@ make -j`nproc`
 ```
 
 After many lines of output you should be back to the terminal, hopefully
-without errors. We can double check that the sysroot was detected as
+without errors. Double check that the sysroot was detected as
 relocatable by checking the contents of `ld/Makefile`:
 
 ```bash
@@ -563,8 +540,8 @@ make install DESTDIR="$TOOLS"
 Now it's time to build the bootstrap compiler.
 
 GCC requires some additional libraries, which are listed in its
-[prerequisites page][gcc-prereq]. We will use the versions that ships
-with Arch Linux, since they are recent enough.
+[prerequisites page][gcc-prereq]. We will use the versions that ship
+with Arch Linux, as they are recent enough.
 
 ```bash
 sudo pacman -S --noconfirm --needed libmpc mpfr gmp
@@ -606,15 +583,15 @@ cd build-bootstrap
 ```
 
 `--prefix` and `--with-sysroot` have the same meanings and implications
-as for binutils, so we won't repeat them here. It's important we use the
-same values we used for binutils, otherwise the two sets of tools will
-have different ideas about were to install things when we do `make
-install` and will look for includes and libraries in different places.
-`--target` and `--enable-initfini-array` also work the same as before.
+as for binutils, so we won't repeat them here. It's important to use the
+same values used for binutils, otherwise the two sets of tools will have
+different ideas about were to install things when `make install` is
+called and will look for libraries in different places.  `--target` and
+`--enable-initfini-array` also work the same as before.
 
 `--enable-languages` is new and tells GCC which languages should be
 supported. Remember that GCC means "GNU Compiler Collection", because it
-supports more than just C and C++. However, our bootstrap compiler will
+supports more than just C and C++. However, the bootstrap compiler will
 only ever be used to build glibc, which is written in C, so there's no
 reason to enable more languages for now.
 
@@ -662,14 +639,15 @@ separate `bootstrap` directory. Since this is going to be thrown away as
 soon as the final compiler is build, we don't want to risk polluting the
 final location with leftovers.
 
-However, under `bootstrap` there is no `sysroot` folder, so let's create
-a symlink to the one under tools, so that the bootstrap compiler still
-sees the same sysroot. At the same time, we want to create `sysroot`
-under `$TOOLS`, since we haven't done it already and no files has been
-placed there by a `make install`. Finally, we also need to create a link
-`$TARGET_TRIPLET/bin` under `bootstrap`, pointing to the folder where
-the binutils are installed. This is [required][gcc-build] by GCC to
-properly locate the assembler and the linker:
+However, under `bootstrap` there is no `sysroot` folder: creating
+a symlink to the one under `tools` gives the bootstrap compiler the
+same view of the sysroot as the binutils. At the same time, we want to
+create `sysroot` under `$TOOLS`, since we haven't done it already and no
+files has been placed there by a `make install`. Finally, we also need
+to create a link `$TARGET_TRIPLET` under `bootstrap`, pointing to
+the folder where the binutils are installed. This is
+[required][gcc-build] by GCC to properly locate the assembler and the
+linker:
 
 > If you are not building GNU binutils in the same source tree as GCC, you
 > will need a cross-assembler and cross-linker installed before
@@ -728,12 +706,12 @@ files from previous builds. Technically, we have just unpacked it so
 there should be nothing to clean, but LFS recommends this step just in
 case something has slipped through the packaging.
 
-`make headers_install INSTALL_HDR_PATH="$SYSROOT/usr"` places the headers
-under `$SYSROOT/usr/include` (the `include` is added automatically). The
-kernel headers are the first thing we place under the sysroot because
-they belong to the target system, and according to the [Filesystem
-Hierarchy Standard][fhs], system include files should go under
-`/usr/include`.
+`make headers_install INSTALL_HDR_PATH="$SYSROOT/usr"` places the
+headers under `$SYSROOT/usr/include` (the `include` is added
+automatically). The kernel headers are the first thing placed under the
+sysroot, as they belong to the target system, and according to the
+[Filesystem Hierarchy Standard][fhs], system include files should go
+under `/usr/include`.
 
 The commands above don't show an important element: in order to
 extract headers for the appropriate target architecture, the kernel
@@ -752,7 +730,7 @@ this:
 sudo pacman -S --needed --noconfirm python
 ```
 
-We are now going to unpack and configure glibc.
+Unpack and configure:
 
 ```bash
 cd $CROSSDIR/mytoolchain/sources/glibc
@@ -807,18 +785,17 @@ the expense of the largest compatibility bloat.
 
 When doing `make` and `make install`, there's an extra `CXX=''`
 variable. If you skim through the output of configure, you'll notice a
-warning message saying that the cross-`g++` compiler that will be used
-was found without a target prefix. What is actually happening is that,
-since with didn't enable C++ for our bootstrap compiler, there is no
-`g++` under `bootstrap`, and the build system ends up finding the `g++`
-that is installed on the host, typically at `/usr/bin/g++`. Of course,
-this compiler cannot handle ARM code. So when actually calling `make` we
-override this selection with an empty value, causing some Makefile code
-to behave as if no C++ compiler is installed. This is required to avoid
-the build phase trying to compile this C++ file:
-`./glibc-2.34/support/links-dso-program.cc`, which also has a C
-equivalent `./glibc-2.34/support/links-dso-program-c.c` that will be
-used instead.
+warning message saying that the cross-`g++` was found without a target
+prefix. What is actually happening is that, since with didn't enable C++
+for the bootstrap compiler, there is no `g++` under `bootstrap`, and the
+build system ends up finding the `g++` that is installed on the host,
+typically at `/usr/bin/g++`. Of course, this compiler cannot handle ARM
+code. So when actually calling `make` we override this selection with an
+empty value, causing some Makefile code to behave as if no C++ compiler
+is installed. This is required to avoid the build phase trying to
+compile a C++ file, `./glibc-2.34/support/links-dso-program.cc`,
+which also has a C equivalent
+`./glibc-2.34/support/links-dso-program-c.c` that will be used instead.
 
 With glibc installed, the last step is to build the final GCC. Before
 that, however, we can get rid of the bootstrap compiler, as its work is
@@ -852,7 +829,7 @@ full thing. The only new stuff is `--with-build-sysroot`, which points
 to the full path of our sysroot. As per the docs, a build sysroot works
 just like a sysroot, but it is only used while building GCC itself, it
 is _not_ remembered by the final cross-compiler. The reason we need this
-is so that the build system can properly find include files and
+is allowing the build system to properly find include files and
 libraries under the sysroot even if the value of `--with-sysroot` does
 not make sense during the build.  Without this option, the build will
 fail with errors claiming that header files cannot be found under
