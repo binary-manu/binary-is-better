@@ -492,7 +492,7 @@ removing MOKs from the system. The following short video shows how to
 enroll the keys. A textual description of the steps follow.
 
 <video controls width="640" height="480">
-  <source src='{{ "/assets/my/mov/mokmanager.webm" | relative_url }}'>
+  <source src='{{ "/assets/my/mov/mokmanager.mp4" | relative_url }}'>
 </video>
 
 shim noticed that some MOKs are scheduled for addition and launched
