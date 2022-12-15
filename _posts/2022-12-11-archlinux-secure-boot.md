@@ -491,7 +491,7 @@ is MOKManager, a UEFI application that takes care of enrolling and
 removing MOKs from the system. The following short video shows how to
 enroll the keys. A textual description of the steps follow.
 
-<video controls width="640" height="480">
+<video controls width="100%">
   <source src='{{ "/assets/my/mov/mokmanager.mp4" | relative_url }}'>
 </video>
 
