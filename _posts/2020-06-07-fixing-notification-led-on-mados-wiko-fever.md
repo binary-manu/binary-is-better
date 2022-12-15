@@ -4,8 +4,6 @@ title: Fixing the notification LED not working on the Wiko Fever 4G running madO
 category: android
 ---
 
-# {{ page.title }}
-
 I own a Wiko Fever 4G, and Android phone employing the Mediatek MT6753
 SoC, which shipped with Android 6.0. Recently, I decided to pimp it by
 installing [madOS][mados], a custom ROM based on AOSP 8.1 supporting

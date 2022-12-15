@@ -4,8 +4,6 @@ title: A hands-on introduction to the K8S NGINX ingress feat. Minikube
 category: Kubernetes
 ---
 
-# {{ page.title }}
-
 This article is a simple hands-on step-by-step guide about settings up
 the NGINX ingress on a K8S cluster.  For our tests, I'll be using a
 Minikube cluster on an Arch Linux system, plus Helm for installing

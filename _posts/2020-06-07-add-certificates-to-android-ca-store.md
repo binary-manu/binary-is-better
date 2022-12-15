@@ -4,8 +4,6 @@ title: Add a root CA certificate to Android CA store
 category: android
 ---
 
-# {{ page.title }}
-
 While trying to add a missing root CA certificate to my Android phone,
 I stumbled into [this blog post][original-article].
 

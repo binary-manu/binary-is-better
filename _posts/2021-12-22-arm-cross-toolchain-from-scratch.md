@@ -4,8 +4,6 @@ title: ARM cross-toolchain from scratch
 category: ELF
 ---
 
-# {{ page.title }}
-
 A _cross toolchain_ is a set of tools (such as compiler, assembler,
 linker and related libraries) that run on a kind of system (such as an
 AMD64 machine) but produce programs that will run on a different

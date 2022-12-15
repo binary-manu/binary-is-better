@@ -3,7 +3,6 @@
 title:  Access USB devices from unprivileged Docker containers
 categories: Docker
 ---
-# {{ page.title }}
 
 Sometimes, a containerized application may need to access devices from
 the host. For example, we might be testing serial console tools inside a

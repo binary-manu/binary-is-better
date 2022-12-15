@@ -4,8 +4,6 @@ title: Screen autoresize under VirtualBox Linux guests with mplugd
 category: virtualbox
 ---
 
-# Screen autoresize under VirtualBox Linux guests with `mplugd`
-
 Users of [VirtualBox][virtualbox] know that one of its nicest features
 is _automatic guest screen resizing_. Basically, every time you perform
 an action that causes the VM window to change its size (i.e. switch it

@@ -3,7 +3,6 @@
 title:  "ELF link-time symbol resolution"
 categories: ELF
 ---
-# ELF link-time symbol resolution
 
 After having examined the linker [behaviour when using static
 libraries][elf-ar-post], it is necessary to understand the symbol

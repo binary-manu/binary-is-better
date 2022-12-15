@@ -4,8 +4,6 @@ title: Linux account and password lifecycle
 category: Linux
 ---
 
-# {{ page.title }}
-
 User account creation and maintenance is a typical routine task for
 \*NIX system administrators. Yet, this topic can sometimes be confusing
 because account information is scattered across a number of files, and

@@ -8,8 +8,6 @@ categories: ELF
 [Oracle's Linker Guide]({{ site.data.links.oracle_linker }})
 {%- endcapture %}
 
-# Rules for object file extraction from ELF archives
-
 ELF static libraries are simply collections of relocatable object files,
 plus a symbol table that maps symbols to the object file that defines
 it. They are usually built using the `ar` tool.

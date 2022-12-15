@@ -4,8 +4,6 @@ title: Variable visibility and role reuse in Ansible
 category: Ansible
 ---
 
-# {{ page.title }}
-
 In Ansible, we can create canned units of work through _roles_. Each
 role contains tasks and their related files, templates, handlers and
 variable definitions. Each role should be designed to perform a specific

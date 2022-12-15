@@ -4,8 +4,6 @@ title: Remote Android debugging
 category: android
 ---
 
-# Remote Android debugging
-
 When debugging or testing an Android application, the most common ways
 to get access to a running Android environment are to:
 
