@@ -10,17 +10,17 @@
 <meta property="og:locale" content="en_US" />
 <meta name="description" content="This article explains how to setup UEFI Secure Boot on Arch Linux, so that the firmware can verify all components that sit between itself and the kernel. This is useful if you need to dual-boot a PC that came with Windows preinstalled and with Secure Boot enabled and you don’t want to keep it disabled after installing Arch." />
 <meta property="og:description" content="This article explains how to setup UEFI Secure Boot on Arch Linux, so that the firmware can verify all components that sit between itself and the kernel. This is useful if you need to dual-boot a PC that came with Windows preinstalled and with Secure Boot enabled and you don’t want to keep it disabled after installing Arch." />
-<link rel="canonical" href="http://localhost:4000/binary-is-better/linux/archlinux-secure-boot" />
-<meta property="og:url" content="http://localhost:4000/binary-is-better/linux/archlinux-secure-boot" />
+<link rel="canonical" href="https://binary-manu.github.io/binary-is-better/linux/archlinux-secure-boot" />
+<meta property="og:url" content="https://binary-manu.github.io/binary-is-better/linux/archlinux-secure-boot" />
 <meta property="og:site_name" content="Binary is better" />
 <meta property="og:type" content="article" />
 <meta property="article:published_time" content="2022-12-11T00:00:00+01:00" />
 <meta name="twitter:card" content="summary" />
 <meta property="twitter:title" content="Setup Secure Boot on Arch Linux" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2022-12-11T00:00:00+01:00","datePublished":"2022-12-11T00:00:00+01:00","description":"This article explains how to setup UEFI Secure Boot on Arch Linux, so that the firmware can verify all components that sit between itself and the kernel. This is useful if you need to dual-boot a PC that came with Windows preinstalled and with Secure Boot enabled and you don’t want to keep it disabled after installing Arch.","headline":"Setup Secure Boot on Arch Linux","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/binary-is-better/linux/archlinux-secure-boot"},"url":"http://localhost:4000/binary-is-better/linux/archlinux-secure-boot"}</script>
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2022-12-11T00:00:00+01:00","datePublished":"2022-12-11T00:00:00+01:00","description":"This article explains how to setup UEFI Secure Boot on Arch Linux, so that the firmware can verify all components that sit between itself and the kernel. This is useful if you need to dual-boot a PC that came with Windows preinstalled and with Secure Boot enabled and you don’t want to keep it disabled after installing Arch.","headline":"Setup Secure Boot on Arch Linux","mainEntityOfPage":{"@type":"WebPage","@id":"https://binary-manu.github.io/binary-is-better/linux/archlinux-secure-boot"},"url":"https://binary-manu.github.io/binary-is-better/linux/archlinux-secure-boot"}</script>
 <!-- End Jekyll SEO tag -->
-<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/binary-is-better/feed.xml" title="Binary is better" /></head>
+<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="https://binary-manu.github.io/binary-is-better/feed.xml" title="Binary is better" /></head>
 <body><header class="site-header" role="banner">
 
   <div class="wrapper"><a class="site-title" rel="author" href="/binary-is-better/">Binary is better</a><nav class="site-nav">
@@ -43,6 +43,9 @@
   <header class="post-header">
     <h1 class="post-title p-name" itemprop="name headline">Setup Secure Boot on Arch Linux</h1>
     <p class="post-meta">
+      
+        <time class="dt-published" datetime="2022-12-15T22:43:00+01:00" itemprop="datePublished">Updated&nbsp;&nbsp; Dec 15, 2022 22:43 -- Fix video size and format
+        </time><br>
       
       <time class="dt-published" datetime="2022-12-11T00:00:00+01:00" itemprop="datePublished">Published Dec 11, 2022
       </time></p>
@@ -578,8 +581,8 @@ is MOKManager, a UEFI application that takes care of enrolling and
 removing MOKs from the system. The following short video shows how to
 enroll the keys. A textual description of the steps follow.</p>
 
-<video controls="" width="640" height="480">
-  <source src="/binary-is-better/assets/my/mov/mokmanager.webm"></source>
+<video controls="" width="100%">
+  <source src="/binary-is-better/assets/my/mov/mokmanager.mp4"></source>
 </video>
 
 <p>shim noticed that some MOKs are scheduled for addition and launched
