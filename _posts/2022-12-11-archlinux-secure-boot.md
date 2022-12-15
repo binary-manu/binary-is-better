@@ -2,7 +2,6 @@
 # vi: set tw=72 et sw=2 sts=-1 autoindent fo=troqan spelllang=en:
 title: Setup Secure Boot on Arch Linux
 category: Linux
-toc: true
 
 arch_ansible_zip: https://github.com/binary-manu/arch-ansible/archive/refs/heads/master.zip
 uefi_keys_diagram: "[![](https://mermaid.ink/img/pako:eNqVkb9ugzAQxl_ldHN4AYYOhEyoUqUuSHEHC1_ACvYh2wxRyLv3wCJKhwz1dP7u99n3544dG8IS-6CnAZQHOV8NFEXxsUTb-7g0pybLErzqdTWf6wrmyehEP2-QdmXav5AYM2R9THocyYD1iYXe8-07oN2JLQ9Lxz5poSANBIOOA3CA9W_re7jSDfiyVMdzxZygYzexJ5-eZbT_emV14QEdBaetkZHdV0WhmBwpLCU0OlwVKv8QLrd8MjZxwDKFmQ6o58TfN9_t98zUVsv0HZYXPUZRafN85r1s63n8Atg1ipA?type=png)](https://mermaid.live/edit#pako:eNqVkb9ugzAQxl_ldHN4AYYOhEyoUqUuSHEHC1_ACvYh2wxRyLv3wCJKhwz1dP7u99n3544dG8IS-6CnAZQHOV8NFEXxsUTb-7g0pybLErzqdTWf6wrmyehEP2-QdmXav5AYM2R9THocyYD1iYXe8-07oN2JLQ9Lxz5poSANBIOOA3CA9W_re7jSDfiyVMdzxZygYzexJ5-eZbT_emV14QEdBaetkZHdV0WhmBwpLCU0OlwVKv8QLrd8MjZxwDKFmQ6o58TfN9_t98zUVsv0HZYXPUZRafN85r1s63n8Atg1ipA)"
