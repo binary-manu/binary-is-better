@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Variable visibility and role reuse in Ansible | Binary is better</title>
+<meta name="generator" content="Jekyll v4.3.1" />
+<meta property="og:title" content="Variable visibility and role reuse in Ansible" />
+<meta name="author" content="Emanuele Giacomelli" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="In Ansible, we can create canned units of work through roles. Each role contains tasks and their related files, templates, handlers and variable definitions. Each role should be designed to perform a specific job, like installing a web server or setting up routing tables. They are one of the basic forms of code reuse in Ansible." />
+<meta property="og:description" content="In Ansible, we can create canned units of work through roles. Each role contains tasks and their related files, templates, handlers and variable definitions. Each role should be designed to perform a specific job, like installing a web server or setting up routing tables. They are one of the basic forms of code reuse in Ansible." />
+<link rel="canonical" href="http://localhost:4000/binary-is-better/ansible/ansible-role-reuse" />
+<meta property="og:url" content="http://localhost:4000/binary-is-better/ansible/ansible-role-reuse" />
+<meta property="og:site_name" content="Binary is better" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2021-05-09T00:00:00+02:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Variable visibility and role reuse in Ansible" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2021-05-09T00:00:00+02:00","datePublished":"2021-05-09T00:00:00+02:00","description":"In Ansible, we can create canned units of work through roles. Each role contains tasks and their related files, templates, handlers and variable definitions. Each role should be designed to perform a specific job, like installing a web server or setting up routing tables. They are one of the basic forms of code reuse in Ansible.","headline":"Variable visibility and role reuse in Ansible","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/binary-is-better/ansible/ansible-role-reuse"},"url":"http://localhost:4000/binary-is-better/ansible/ansible-role-reuse"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/binary-is-better/feed.xml" title="Binary is better" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/binary-is-better/">Binary is better</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/binary-is-better/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Variable visibility and role reuse in Ansible</h1>
+    <p class="post-meta">
+      
+      <time class="dt-published" datetime="2021-05-09T00:00:00+02:00" itemprop="datePublished">Published May 9, 2021
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <ul id="toc" class="section-nav">
+<li class="toc-entry toc-h2"><a href="#visibility-of-vars-and-defaults">Visibility of vars and defaults</a>
+<ul>
+<li class="toc-entry toc-h3"><a href="#importing-roles-statically">Importing roles statically</a></li>
+<li class="toc-entry toc-h3"><a href="#importing-roles-dynamically">Importing roles dynamically</a></li>
+</ul>
+</li>
+<li class="toc-entry toc-h2"><a href="#visibility-of-task-level-vars">Visibility of task-level vars</a>
+<ul>
+<li class="toc-entry toc-h3"><a href="#static-imports">Static imports</a></li>
+<li class="toc-entry toc-h3"><a href="#dynamic-includes">Dynamic includes</a></li>
+</ul>
+</li>
+<li class="toc-entry toc-h2"><a href="#summing-up">Summing up</a></li>
+</ul><p>In Ansible, we can create canned units of work through <em>roles</em>. Each
+role contains tasks and their related files, templates, handlers and
+variable definitions. Each role should be designed to perform a specific
+job, like installing a web server or setting up routing tables.  They
+are one of the basic forms of code reuse in Ansible.</p>
+
+<p>To use a role, we add it to our plays so that it gets executed at the
+proper time. Ansible provides 3 different methods to invoke a role from
+a play:</p>
+
+<ul>
+  <li>the <code class="language-plaintext highlighter-rouge">roles</code> play keyword: this is the traditional way of calling a
+role; each role is listed in the play in the order we want them to
+run. Ansible ensures that they are run after the <code class="language-plaintext highlighter-rouge">pre_tasks</code> but
+before the <code class="language-plaintext highlighter-rouge">tasks</code> for this play;</li>
+  <li>the <code class="language-plaintext highlighter-rouge">import_role</code> task works much like <code class="language-plaintext highlighter-rouge">roles</code>, but being a task we
+can place it among other tasks. This allows us to reuse a role in
+between other tasks. Also, <code class="language-plaintext highlighter-rouge">import_role</code> is not subject to the
+limitations of <code class="language-plaintext highlighter-rouge">roles</code> regarding multiple executions of the same role,
+so calling it twice with the same arguments result in two calls in a
+row without special configurations (i.e. setting <code class="language-plaintext highlighter-rouge">allow_duplicates</code>);</li>
+  <li>the <code class="language-plaintext highlighter-rouge">include_role</code> task is the dynamic version of <code class="language-plaintext highlighter-rouge">import_role</code>. Where
+<code class="language-plaintext highlighter-rouge">import_role</code> acts as if the callee role was effectively part of the
+play (which affects variable visibility as we’ll see in a moment),
+<code class="language-plaintext highlighter-rouge">include_role</code> provides a higher degree of independence between the
+play and the role.</li>
+</ul>
+
+<p>An important facet of role reuse regards variable visibility: if a role
+is used in a play, its variables, as defined in its <code class="language-plaintext highlighter-rouge">defaults</code> and
+<code class="language-plaintext highlighter-rouge">vars</code> files, can be made available to other parts of the play, and the
+same is possible for variables defined for a specific role invocation
+using the <code class="language-plaintext highlighter-rouge">vars</code> keyword. How this happens exactly depends on how the
+role is called, using one of the methods described above.  This is a
+point worth understanding because it can lead to surprising
+consequences.</p>
+
+<p>First, we’ll have a look at the visibility of role variables defined in
+<code class="language-plaintext highlighter-rouge">defaults</code> and <code class="language-plaintext highlighter-rouge">vars</code> files. After that, we’ll explore visibility of
+variables defined for individual role invocations.</p>
+
+<p>All the following code snippets are fully runnable playbooks, and the
+output has been produced with Ansible 2.10.</p>
+
+<h2 id="visibility-of-vars-and-defaults">
+<a class="anchor" href="#visibility-of-vars-and-defaults" aria-hidden="true"><span class="octicon octicon-link"></span></a>Visibility of <code class="language-plaintext highlighter-rouge">vars</code> and <code class="language-plaintext highlighter-rouge">defaults</code>
+</h2>
+
+<h3 id="importing-roles-statically">
+<a class="anchor" href="#importing-roles-statically" aria-hidden="true"><span class="octicon octicon-link"></span></a>Importing roles statically</h3>
+
+<p>First, we analyze the case of static role imports. As mentioned above,
+they are performed either using the <code class="language-plaintext highlighter-rouge">roles</code> play keyword or the
+<code class="language-plaintext highlighter-rouge">include_role</code> task.  As far as this article is concerned, we’ll see
+that the two methods behave exactly the same.</p>
+
+<p>When a role is imported statically, Ansible behaves as if all the
+components of the role, its tasks, its variables and others, were
+physically written inside the play itself. For example, if a play calls
+on a role that defines a variable <code class="language-plaintext highlighter-rouge">foo</code> in its <code class="language-plaintext highlighter-rouge">defaults</code>:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">I'm a play</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="c1"># This role defines a variable 'foo` in its defaults</span>
+    <span class="pi">-</span> <span class="s">define_foo</span>
+</code></pre></div></div>
+
+<p>Ansible treats it as if we had written:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">I'm a play</span>
+  <span class="na">vars</span><span class="pi">:</span>
+    <span class="na">foo</span><span class="pi">:</span> <span class="s">bar</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">define_foo</span>
+</code></pre></div></div>
+
+<p>The consequences of this design are far-reaching. If a variable is
+defined at the play level, it is accessible from all the tasks and roles
+called from that play. And this includes all tasks that would run
+<em>before</em> the one that defines the variable.</p>
+
+<p>Consider the following example:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">var</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/var/defaults/main.yaml</span>
+<span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">'foo'</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">I'm</span><span class="nv"> </span><span class="s">defined</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">'var'"</span>
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">var</code> role has only a <code class="language-plaintext highlighter-rouge">defaults</code> file. Being statically imported,
+its variables are promoted to the play level. So, if we run it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [debug] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm 'foo' and I'm defined in 'var'"
+}
+
+TASK [debug] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm 'foo' and I'm defined in 'var'"
+}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=3    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0 
+</code></pre></div></div>
+
+<p>See how the <code class="language-plaintext highlighter-rouge">pre_tasks</code> can access the variable <code class="language-plaintext highlighter-rouge">foo</code> defined by role
+<code class="language-plaintext highlighter-rouge">var</code>, even if <code class="language-plaintext highlighter-rouge">var</code> is meant to be executed <em>after</em> the <code class="language-plaintext highlighter-rouge">pre_tasks</code>.
+This can be surprising as there is no clue about the definition of that
+variable when we reach the <code class="language-plaintext highlighter-rouge">pre_tasks</code>.</p>
+
+<p>If we rewrite the example to use <code class="language-plaintext highlighter-rouge">import_role</code>, it behaves exactly the
+same:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">import_role</span><span class="pi">:</span>
+        <span class="na">name</span><span class="pi">:</span> <span class="s">var</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/var/defaults/main.yaml</span>
+<span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">'foo'</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">I'm</span><span class="nv"> </span><span class="s">defined</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">'var'"</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [debug] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm 'foo' and I'm defined in 'var'"
+}
+
+TASK [debug] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm 'foo' and I'm defined in 'var'"
+}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=3    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+</code></pre></div></div>
+
+<p>From now on, we’ll only show example using <code class="language-plaintext highlighter-rouge">roles</code>, as the reader can
+easily derive the equivalent version using <code class="language-plaintext highlighter-rouge">import_role</code>.</p>
+
+<p>This is much what there is to say about static imports, as this behavior
+cannot be tweaked in any way. Whenever you statically import a role, all
+its variables can be accessed from any other task or role from the same
+play, no matter their relative positioning.</p>
+
+<p><a name="name-chash"></a></p>
+
+<p>This can lead to unintended interactions. For example, suppose we call
+a role which uses a variable <code class="language-plaintext highlighter-rouge">state</code> to decide which action it should
+perform. If we do not specify a value, we would assume that the role
+will receive no variable from outside and thus can fallback on a
+default. This is a common pattern for many Ansible tasks:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">do_thing</span>
+    <span class="pi">-</span> <span class="na">role</span><span class="pi">:</span> <span class="s">do_another_thing</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">state</span><span class="pi">:</span> <span class="s">a nap</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/do_thing/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">do_thing</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s">I'm going to do {{ state | default("nothing") }}</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/do_another_thing/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">do_another_thing</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s">I'm going to do {{ state | default("a walk") }}</span>
+</code></pre></div></div>
+
+<p>What we desire is, for the first role invocation, to have <code class="language-plaintext highlighter-rouge">do_thing</code>
+called and perform its default action. After that, we call
+<code class="language-plaintext highlighter-rouge">do_another_thing</code> with an explicit variable, to have it perform a
+specific action. Therefore, the two tasks should do <code class="language-plaintext highlighter-rouge">nothing</code> and <code class="language-plaintext highlighter-rouge">a
+nap</code>. However, what we get is:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="s">PLAY [Run the test] ************************************************************</span>
+
+<span class="s">TASK [Gathering Facts] *********************************************************</span>
+<span class="na">ok</span><span class="pi">:</span> <span class="pi">[</span><span class="nv">localhost</span><span class="pi">]</span>
+
+<span class="s">TASK [do_thing</span> <span class="err">:</span> <span class="s">do_thing] *****************************************************</span>
+<span class="na">ok</span><span class="pi">:</span> <span class="pi">[</span><span class="nv">localhost</span><span class="pi">]</span> <span class="s">=&gt; {</span>
+    <span class="s">"msg"</span><span class="err">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">going</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">do</span><span class="nv"> </span><span class="s">a</span><span class="nv"> </span><span class="s">nap"</span>
+<span class="err">}</span>
+
+<span class="s">TASK [do_another_thing</span> <span class="err">:</span> <span class="s">do_another_thing] *************************************</span>
+<span class="na">ok</span><span class="pi">:</span> <span class="pi">[</span><span class="nv">localhost</span><span class="pi">]</span> <span class="s">=&gt; {</span>
+    <span class="s">"msg"</span><span class="err">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">going</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">do</span><span class="nv"> </span><span class="s">a</span><span class="nv"> </span><span class="s">nap"</span>
+<span class="err">}</span>
+
+<span class="s">PLAY RECAP *********************************************************************</span>
+<span class="na">localhost                  </span><span class="pi">:</span> <span class="s">ok=3    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0</span>
+</code></pre></div></div>
+
+<p>Without surprise, the <code class="language-plaintext highlighter-rouge">state</code> variable from the second role invocation
+percolated up to the first one, subverting the intended semantics of the
+call.</p>
+
+<p>To put it differently, once you pass a variable to a statically imported
+role invocation, that variable is also passed to all other invocations
+of the same role. You can no longer count on any internal role defaults,
+because play variables override them.</p>
+
+<p>A simple solution to this kind of problem is to use prefixes in variable
+names to isolate variable logically belonging to different roles. If
+instead of <code class="language-plaintext highlighter-rouge">state</code> we used, for example, <code class="language-plaintext highlighter-rouge">do_thing_state</code> and
+<code class="language-plaintext highlighter-rouge">do_another_thing_state</code> state, there would be no conflict between the two
+role invocations. <code class="language-plaintext highlighter-rouge">do_thing</code> would still be able to access
+<code class="language-plaintext highlighter-rouge">do_another_thing_state</code>, but it would simply not use it. And if it did,
+it would be pretty easy to spot the mistake, since the variable prefix
+does not belong to the role.</p>
+
+<p>Unfortunately, this trick will not avoid name clashes between multiple
+invocations of the <em>same</em> role, because then prefixes would obviously
+collide. We’ll see a solution to this problem later.</p>
+
+<h3 id="importing-roles-dynamically">
+<a class="anchor" href="#importing-roles-dynamically" aria-hidden="true"><span class="octicon octicon-link"></span></a>Importing roles dynamically</h3>
+
+<p><code class="language-plaintext highlighter-rouge">include_role</code> behaves differently than <code class="language-plaintext highlighter-rouge">import_role</code>. Ansible performs
+no pre-processing of this kind of role invocation and will not add
+anything to the play. This behaves more like a real function call and
+helps keeping things uncluttered.</p>
+
+<p>By default, <code class="language-plaintext highlighter-rouge">defaults</code> and <code class="language-plaintext highlighter-rouge">vars</code> defined in a role that is called
+dynamically will be unavailable to other roles or tasks in the same
+play, no matter if they come before or after the include.</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Before</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">include_role</span><span class="pi">:</span>
+        <span class="na">name</span><span class="pi">:</span> <span class="s">var</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/var/defaults/main.yaml</span>
+<span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">'foo'</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">I'm</span><span class="nv"> </span><span class="s">defined</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">'var'"</span>
+</code></pre></div></div>
+
+<p>Running this playbook produces the following error about <code class="language-plaintext highlighter-rouge">foo</code> being
+undefined for the <code class="language-plaintext highlighter-rouge">Before</code> task. For readability, part of the error
+message has been redacted:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Before] ******************************************************************
+fatal: [localhost]: FAILED! =&gt; {"msg": "The task includes an option with
+an undefined variable. The error was: 'foo' is undefined [REDACTED]
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=1    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0
+</code></pre></div></div>
+
+<p>If we want to be sure that <code class="language-plaintext highlighter-rouge">foo</code> is also unavailable to tasks following
+the call, we can simply remove <code class="language-plaintext highlighter-rouge">Before</code> from the play:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">include_role</span><span class="pi">:</span>
+        <span class="na">name</span><span class="pi">:</span> <span class="s">var</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/var/defaults/main.yaml</span>
+<span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">'foo'</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">I'm</span><span class="nv"> </span><span class="s">defined</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">'var'"</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [include_role : var] ******************************************************
+
+TASK [After] *******************************************************************
+fatal: [localhost]: FAILED! =&gt; {"msg": "The task includes an option with
+an undefined variable. The error was: 'foo' is undefined [REDACTED]
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=1    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0 
+</code></pre></div></div>
+
+<p>And again, the variable is undefined.</p>
+
+<p>Unlike <code class="language-plaintext highlighter-rouge">import_role</code>, this behaviour can be tweaked: <code class="language-plaintext highlighter-rouge">include_role</code>
+accepts a <code class="language-plaintext highlighter-rouge">public</code> boolean argument. It’s default is <code class="language-plaintext highlighter-rouge">false</code> which
+matches what we have just seen. Setting it to <code class="language-plaintext highlighter-rouge">true</code> makes <code class="language-plaintext highlighter-rouge">defaults</code>
+and <code class="language-plaintext highlighter-rouge">vars</code> from the included role available to tasks coming <em>after</em> the
+<code class="language-plaintext highlighter-rouge">include_role</code>. This is safer than a static import, because we get to
+read the task responsible for the definition of a variable before it can
+be used. Also, the presence of <code class="language-plaintext highlighter-rouge">public</code> makes this explicit.</p>
+
+<p>Let’s review the previous example with a task before and one after the
+include and check that, even with <code class="language-plaintext highlighter-rouge">public</code>, tasks coming before the
+include cannot read role variables:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Before</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">include_role</span><span class="pi">:</span>
+        <span class="na">name</span><span class="pi">:</span> <span class="s">var</span>
+        <span class="na">public</span><span class="pi">:</span> <span class="s">yes</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/var/defaults/main.yaml</span>
+<span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">'foo'</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">I'm</span><span class="nv"> </span><span class="s">defined</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">'var'"</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Before] ******************************************************************
+fatal: [localhost]: FAILED! =&gt; {"msg": "The task includes an option with
+an undefined variable. The error was: 'foo' is undefined [REDACTED]
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=1    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0
+</code></pre></div></div>
+
+<p>If we remove the <code class="language-plaintext highlighter-rouge">Before</code> task, everything works and <code class="language-plaintext highlighter-rouge">After</code> can access
+the <code class="language-plaintext highlighter-rouge">foo</code> variable from the role:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">include_role</span><span class="pi">:</span>
+        <span class="na">name</span><span class="pi">:</span> <span class="s">var</span>
+        <span class="na">public</span><span class="pi">:</span> <span class="s">yes</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/var/defaults/main.yaml</span>
+<span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">'foo'</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">I'm</span><span class="nv"> </span><span class="s">defined</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">'var'"</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [include_role : var] ******************************************************
+
+TASK [After] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm 'foo' and I'm defined in 'var'"
+}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=2    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0  
+</code></pre></div></div>
+
+<h2 id="visibility-of-task-level-vars">
+<a class="anchor" href="#visibility-of-task-level-vars" aria-hidden="true"><span class="octicon octicon-link"></span></a>Visibility of task-level vars</h2>
+
+<p>At this point, we have clarified what happens to variables a role
+defines via its <code class="language-plaintext highlighter-rouge">defaults</code> or <code class="language-plaintext highlighter-rouge">vars</code> files. But a role can also receive
+variables from the caller via the role or tasks-level <code class="language-plaintext highlighter-rouge">vars</code> keyword.
+This variables are meant to complement or override <code class="language-plaintext highlighter-rouge">defaults</code> and <code class="language-plaintext highlighter-rouge">vars</code>
+from the role on a call-by-call basis.</p>
+
+<p>The default Ansible behaviour for this variables is to give them the
+same visibility as other role variables, which means that for static
+imports they would be visible to tasks both before and after the import,
+while for dynamic imports they follow the behaviour dictated by the
+<code class="language-plaintext highlighter-rouge">public</code> attribute.</p>
+
+<h3 id="static-imports">
+<a class="anchor" href="#static-imports" aria-hidden="true"><span class="octicon octicon-link"></span></a>Static imports</h3>
+
+<p>In the following examples, we’ll use a <code class="language-plaintext highlighter-rouge">print</code> role which simply prints
+a variable <code class="language-plaintext highlighter-rouge">foo</code> without defining it: it will be passed by the caller.
+Let’s see how this interacts with other tasks:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">role</span><span class="pi">:</span> <span class="s">print</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [debug] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [print : Print 'foo'] *****************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [debug] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=4    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0 
+</code></pre></div></div>
+
+<p>See how <code class="language-plaintext highlighter-rouge">foo</code> is made available to tasks before and after the role, just
+as if it were defined in a <code class="language-plaintext highlighter-rouge">vars</code> file.</p>
+
+<p>According to <a href="https://docs.ansible.com/ansible/latest/user_guide/playbooks_variables.html#ansible-variable-precedence">variable precedence rules</a>, task vars override
+both play vars and role defaults, so if we also define <code class="language-plaintext highlighter-rouge">foo</code> within the role
+and the play, those values will be ignored:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">vars</span><span class="pi">:</span>
+    <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">whole</span><span class="nv"> </span><span class="s">play"</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">role</span><span class="pi">:</span> <span class="s">print</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/defaults/main.yaml</span>
+<span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">defined</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">role</span><span class="nv"> </span><span class="s">vars"</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [debug] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [print : Print 'foo'] *****************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [debug] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=4    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+</code></pre></div></div>
+
+<p>There is currently an <a href="https://github.com/ansible/ansible/issues/69388">issue</a> in Ansible which causes
+variables defined in a role’s <code class="language-plaintext highlighter-rouge">vars</code> folder to take precedence over
+variables defined for the individual <code class="language-plaintext highlighter-rouge">role</code> call.</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">vars</span><span class="pi">:</span>
+    <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">whole</span><span class="nv"> </span><span class="s">play"</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">role</span><span class="pi">:</span> <span class="s">print</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/vars/main.yaml</span>
+<span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">defined</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">role</span><span class="nv"> </span><span class="s">vars"</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [debug] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo defined in role vars"
+}
+
+TASK [print : Print 'foo'] *****************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo defined in role vars"
+}
+
+TASK [debug] *******************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo defined in role vars"
+}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=4    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=
+</code></pre></div></div>
+
+<p>To get the intended behaviour, with call-specific variables overriding
+role-wide ones, stick to <code class="language-plaintext highlighter-rouge">defaults</code> rather than <code class="language-plaintext highlighter-rouge">vars</code> in a role layout.</p>
+
+<p>Ansible provides a configuration switch that restricts the availability
+of call-level variables to that single specific call. It can be set
+either via the <code class="language-plaintext highlighter-rouge">ANSIBLE_PRIVATE_ROLE_VARS</code> environment variable or via
+the configuration file, like this:</p>
+
+<div class="language-ini highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># This is ansible.cfg
+</span><span class="nn">[defaults]</span>
+<span class="py">private_role_vars</span> <span class="p">=</span> <span class="s">true</span>
+</code></pre></div></div>
+
+<p>Once this setting is in effect, call-level variables will no longer be
+available to other tasks. Let’s retry the previous example with the new
+configuration:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Before</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">role</span><span class="pi">:</span> <span class="s">print</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./ansible.cfg</span>
+<span class="pi">[</span><span class="nv">defaults</span><span class="pi">]</span>
+<span class="s">private_role_vars = </span><span class="no">true</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************************************************
+
+TASK [Gathering Facts] *********************************************************************************************
+ok: [localhost]
+
+TASK [Before] ******************************************************************************************************
+fatal: [localhost]: FAILED! =&gt; {"msg": "The task includes an option with
+an undefined variable. The error was: 'foo' is undefined [REDACTED]
+
+PLAY RECAP *********************************************************************************************************
+localhost                  : ok=1    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0
+</code></pre></div></div>
+
+<p>The task before the role cannot access <code class="language-plaintext highlighter-rouge">foo</code>. This is also true for the
+task after it:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">role</span><span class="pi">:</span> <span class="s">print</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./ansible.cfg</span>
+<span class="pi">[</span><span class="nv">defaults</span><span class="pi">]</span>
+<span class="s">private_role_vars = </span><span class="no">true</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************************************************
+
+TASK [Gathering Facts] *********************************************************************************************
+ok: [localhost]
+
+TASK [print : Print 'foo'] *****************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [After] *******************************************************************************************************
+fatal: [localhost]: FAILED! =&gt; {"msg": "The task includes an option with
+an undefined variable. The error was: 'foo' is undefined [REDACTED]
+
+PLAY RECAP *********************************************************************************************************
+localhost                  : ok=2    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0 
+</code></pre></div></div>
+
+<p>When combined with play-level variables, call-level variables are
+visible to the role only, while other tasks still see the play-level
+value:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">vars</span><span class="pi">:</span>
+    <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">global</span><span class="nv"> </span><span class="s">foo"</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">role</span><span class="pi">:</span> <span class="s">print</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./ansible.cfg</span>
+<span class="pi">[</span><span class="nv">defaults</span><span class="pi">]</span>
+<span class="s">private_role_vars = </span><span class="no">true</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************************************************
+
+TASK [Gathering Facts] *********************************************************************************************
+ok: [localhost]
+
+TASK [debug] *******************************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the global foo"
+}
+
+TASK [print : Print 'foo'] *****************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [debug] *******************************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the global foo"
+}
+
+PLAY RECAP *********************************************************************************************************
+localhost                  : ok=4    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0 
+</code></pre></div></div>
+
+<p>The same is true for role defaults: they are available to other tasks,
+but the task itself sees the task-level overrides:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">role</span><span class="pi">:</span> <span class="s">print</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/defaults/main.yaml</span>
+<span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">defined</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">defaults"</span>
+<span class="nn">---</span>
+<span class="c1"># ./ansible.cfg</span>
+<span class="pi">[</span><span class="nv">defaults</span><span class="pi">]</span>
+<span class="s">private_role_vars = </span><span class="no">true</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************************************************
+
+TASK [Gathering Facts] *********************************************************************************************
+ok: [localhost]
+
+TASK [debug] *******************************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm foo defined in the defaults"
+}
+
+TASK [print : Print 'foo'] *****************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [debug] *******************************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm foo defined in the defaults"
+}
+
+PLAY RECAP *********************************************************************************************************
+localhost                  : ok=4    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0 
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">import_role</code> behaves in the same way.</p>
+
+<p>Using <code class="language-plaintext highlighter-rouge">private_role_vars</code> can help solve the other typical name clash
+problem that arises with static imports. We have <a href="#name-clashes">already
+seen</a> how to handle clashes between different roles. But
+that solution does not allow calling the same role more than once
+without call-level variables passed to one call impacting the others.</p>
+
+<p><code class="language-plaintext highlighter-rouge">private_role_vars</code> can provide a solution:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml &lt;==</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">roles</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="s">do_thing</span>
+    <span class="pi">-</span> <span class="na">role</span><span class="pi">:</span> <span class="s">do_thing</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">state</span><span class="pi">:</span> <span class="s">a nap</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/do_thing/tasks/main.yaml &lt;==</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">do_thing</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s">I'm going to do {{ state | default("nothing") }}</span>
+<span class="nn">---</span>
+<span class="c1"># ./ansible.cfg &lt;==</span>
+<span class="pi">[</span><span class="nv">defaults</span><span class="pi">]</span>
+<span class="s">private_role_vars = </span><span class="no">true</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [do_thing : do_thing] *****************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm going to do nothing"
+}
+
+TASK [do_thing : do_thing] *****************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm going to do a nap"
+}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=3    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+</code></pre></div></div>
+
+<p>This time, the playbook work as intended. The <code class="language-plaintext highlighter-rouge">state</code> variable passed to
+the second role invocation only affects that invocation. The first one
+receives no <code class="language-plaintext highlighter-rouge">state</code> variable, and the default filter correctly expands
+to the internally defined default value.</p>
+
+<h3 id="dynamic-includes">
+<a class="anchor" href="#dynamic-includes" aria-hidden="true"><span class="octicon octicon-link"></span></a>Dynamic includes</h3>
+
+<p>When calling roles dynamically, task-level <code class="language-plaintext highlighter-rouge">vars</code> follow the behaviour
+mandated by <code class="language-plaintext highlighter-rouge">public</code>. They are available to no other tasks if <code class="language-plaintext highlighter-rouge">public</code>
+is set to <code class="language-plaintext highlighter-rouge">false</code>, and to subsequent tasks only if <code class="language-plaintext highlighter-rouge">public</code> is set to
+<code class="language-plaintext highlighter-rouge">true</code>.</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">pre_tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Before</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">include_role</span><span class="pi">:</span>
+        <span class="na">name</span><span class="pi">:</span> <span class="s">print</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************************************************
+
+TASK [Gathering Facts] *********************************************************************************************
+ok: [localhost]
+
+TASK [Before] ******************************************************************************************************
+fatal: [localhost]: FAILED! =&gt; {"msg": "The task includes an option with
+an undefined variable. The error was: 'foo' is undefined [REDACTED]
+
+PLAY RECAP *********************************************************************************************************
+localhost                  : ok=1    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0 
+</code></pre></div></div>
+
+<p>And:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">include_role</span><span class="pi">:</span>
+        <span class="na">name</span><span class="pi">:</span> <span class="s">print</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************************************************
+
+TASK [Gathering Facts] *********************************************************************************************
+ok: [localhost]
+
+TASK [include_role : print] ****************************************************************************************
+
+TASK [print : Print 'foo'] *****************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [After] *******************************************************************************************************
+fatal: [localhost]: FAILED! =&gt; {"msg": "The task includes an option with
+an undefined variable. The error was: 'foo' is undefined [REDACTED]
+
+PLAY RECAP *********************************************************************************************************
+localhost                  : ok=2    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0 
+</code></pre></div></div>
+
+<p>And:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">include_role</span><span class="pi">:</span>
+        <span class="na">name</span><span class="pi">:</span> <span class="s">print</span>
+        <span class="na">public</span><span class="pi">:</span> <span class="s">yes</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************************************************
+
+TASK [Gathering Facts] *********************************************************************************************
+ok: [localhost]
+
+TASK [include_role : print] ****************************************************************************************
+
+TASK [print : Print 'foo'] *****************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [After] *******************************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+PLAY RECAP *********************************************************************************************************
+localhost                  : ok=3    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+</code></pre></div></div>
+
+<p>If we now add <code class="language-plaintext highlighter-rouge">private_role_vars</code> and a default value for <code class="language-plaintext highlighter-rouge">foo</code>, notice
+how the subsequent task receives the default value of <code class="language-plaintext highlighter-rouge">foo</code>:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">include_role</span><span class="pi">:</span>
+        <span class="na">name</span><span class="pi">:</span> <span class="s">print</span>
+        <span class="na">public</span><span class="pi">:</span> <span class="s">yes</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/defaults/main.yaml</span>
+<span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">from</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">defaults"</span>
+<span class="nn">---</span>
+<span class="c1"># ./ansible.cfg</span>
+<span class="pi">[</span><span class="nv">defaults</span><span class="pi">]</span>
+<span class="s">private_role_vars = </span><span class="no">true</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************************************************
+
+TASK [Gathering Facts] *********************************************************************************************
+ok: [localhost]
+
+TASK [include_role : print] ****************************************************************************************
+
+TASK [print : Print 'foo'] *****************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [After] *******************************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo from the defaults"
+}
+
+PLAY RECAP *********************************************************************************************************
+localhost                  : ok=3    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0 
+</code></pre></div></div>
+
+<p>The same holds if we replace the role default with a play variable:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># ./main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Run the test</span>
+  <span class="na">hosts</span><span class="pi">:</span> <span class="s">localhost</span>
+  <span class="na">connection</span><span class="pi">:</span> <span class="s">local</span>
+  <span class="na">vars</span><span class="pi">:</span>
+    <span class="na">foo</span><span class="pi">:</span> <span class="s">Global foo</span>
+  <span class="na">tasks</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">include_role</span><span class="pi">:</span>
+        <span class="na">name</span><span class="pi">:</span> <span class="s">print</span>
+        <span class="na">public</span><span class="pi">:</span> <span class="s">yes</span>
+      <span class="na">vars</span><span class="pi">:</span>
+        <span class="na">foo</span><span class="pi">:</span> <span class="s2">"</span><span class="s">I'm</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">passed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">print</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">vars"</span>
+    <span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">After</span>
+      <span class="na">debug</span><span class="pi">:</span>
+        <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./roles/print/tasks/main.yaml</span>
+<span class="pi">-</span> <span class="na">name</span><span class="pi">:</span> <span class="s">Print 'foo'</span>
+  <span class="na">debug</span><span class="pi">:</span>
+    <span class="na">msg</span><span class="pi">:</span> <span class="s2">"</span><span class="s">{{</span><span class="nv"> </span><span class="s">foo</span><span class="nv"> </span><span class="s">}}"</span>
+<span class="nn">---</span>
+<span class="c1"># ./ansible.cfg</span>
+<span class="pi">[</span><span class="nv">defaults</span><span class="pi">]</span>
+<span class="s">private_role_vars = </span><span class="no">true</span>
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PLAY [Run the test] ************************************************************************************************
+
+TASK [Gathering Facts] *********************************************************************************************
+ok: [localhost]
+
+TASK [include_role : print] ****************************************************************************************
+
+TASK [print : Print 'foo'] *****************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "I'm the foo passed to print in vars"
+}
+
+TASK [After] *******************************************************************************************************
+ok: [localhost] =&gt; {
+    "msg": "Global foo"
+}
+
+PLAY RECAP *********************************************************************************************************
+localhost                  : ok=3    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0 
+</code></pre></div></div>
+
+<h2 id="summing-up">
+<a class="anchor" href="#summing-up" aria-hidden="true"><span class="octicon octicon-link"></span></a>Summing up</h2>
+
+<p>As we have seen, interactions between role defaults, play variables and
+vars passed to specific tasks or role invocations can lead to surprises.
+To minimize the chances of unwanted name clashes, some rules can be
+helpful:</p>
+
+<ul>
+  <li>prefer <code class="language-plaintext highlighter-rouge">include_role</code> to <code class="language-plaintext highlighter-rouge">import_role</code> or <code class="language-plaintext highlighter-rouge">roles</code> when possible, as
+this prevents role defaults being available to earlier roles and
+tasks;</li>
+  <li>prefer keeping <code class="language-plaintext highlighter-rouge">public</code> in calls to <code class="language-plaintext highlighter-rouge">include_role</code> set to <code class="language-plaintext highlighter-rouge">false</code>, so
+that role defaults are not available to tasks coming later;</li>
+  <li>prefer running with <code class="language-plaintext highlighter-rouge">private_role_vars</code> set to <code class="language-plaintext highlighter-rouge">true</code>;</li>
+  <li>use prefixes (or any other naming scheme that can reasonably guarantee
+uniqueness) to logically separate variables belonging to different
+roles.</li>
+</ul>
+
+<!-- Links -->
+
+  </div>
+
+  <script src="https://utteranc.es/client.js"
+     repo="binary-manu/binary-is-better"
+     issue-term="pathname"
+     label="comment"
+     theme="preferred-color-scheme"
+     crossorigin="anonymous"
+     async>
+  </script>
+
+  <a class="u-url" href="/binary-is-better/ansible/ansible-role-reuse" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/binary-is-better/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Binary is better</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Emanuele Giacomelli</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <a rel="license" href="http://creativecommons.org/licenses/by/3.0/">
+          <img alt="Creative Commons License" style="border-width:0"
+            src="https://i.creativecommons.org/l/by/3.0/88x31.png">
+        </a><ul class="social-media-list"></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Personal notes about my software developer things</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

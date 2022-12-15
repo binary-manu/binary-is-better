@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Setup Secure Boot on Arch Linux | Binary is better</title>
+<meta name="generator" content="Jekyll v4.3.1" />
+<meta property="og:title" content="Setup Secure Boot on Arch Linux" />
+<meta name="author" content="Emanuele Giacomelli" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="This article explains how to setup UEFI Secure Boot on Arch Linux, so that the firmware can verify all components that sit between itself and the kernel. This is useful if you need to dual-boot a PC that came with Windows preinstalled and with Secure Boot enabled and you don’t want to keep it disabled after installing Arch." />
+<meta property="og:description" content="This article explains how to setup UEFI Secure Boot on Arch Linux, so that the firmware can verify all components that sit between itself and the kernel. This is useful if you need to dual-boot a PC that came with Windows preinstalled and with Secure Boot enabled and you don’t want to keep it disabled after installing Arch." />
+<link rel="canonical" href="http://localhost:4000/binary-is-better/linux/archlinux-secure-boot" />
+<meta property="og:url" content="http://localhost:4000/binary-is-better/linux/archlinux-secure-boot" />
+<meta property="og:site_name" content="Binary is better" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-12-11T00:00:00+01:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Setup Secure Boot on Arch Linux" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2022-12-11T00:00:00+01:00","datePublished":"2022-12-11T00:00:00+01:00","description":"This article explains how to setup UEFI Secure Boot on Arch Linux, so that the firmware can verify all components that sit between itself and the kernel. This is useful if you need to dual-boot a PC that came with Windows preinstalled and with Secure Boot enabled and you don’t want to keep it disabled after installing Arch.","headline":"Setup Secure Boot on Arch Linux","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/binary-is-better/linux/archlinux-secure-boot"},"url":"http://localhost:4000/binary-is-better/linux/archlinux-secure-boot"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/binary-is-better/feed.xml" title="Binary is better" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/binary-is-better/">Binary is better</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/binary-is-better/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Setup Secure Boot on Arch Linux</h1>
+    <p class="post-meta">
+      
+      <time class="dt-published" datetime="2022-12-11T00:00:00+01:00" itemprop="datePublished">Published Dec 11, 2022
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <ul id="toc" class="section-nav">
+<li class="toc-entry toc-h2"><a href="#prerequisites">Prerequisites</a></li>
+<li class="toc-entry toc-h2"><a href="#prepare-the-vm">Prepare the VM</a></li>
+<li class="toc-entry toc-h2"><a href="#a-short-explanation-of-secure-boot">A short explanation of Secure Boot</a>
+<ul>
+<li class="toc-entry toc-h3"><a href="#uefi-keys">UEFI keys</a></li>
+<li class="toc-entry toc-h3"><a href="#the-shim-bootloader">The shim bootloader</a></li>
+</ul>
+</li>
+<li class="toc-entry toc-h2"><a href="#setup">Setup</a>
+<ul>
+<li class="toc-entry toc-h3"><a href="#install-shim-and-other-utils">Install shim and other utils</a></li>
+<li class="toc-entry toc-h3"><a href="#mok-generation">MOK generation</a></li>
+<li class="toc-entry toc-h3"><a href="#schedule-the-mok-for-enrollment">Schedule the MOK for enrollment</a></li>
+<li class="toc-entry toc-h3"><a href="#install-grub">Install GRUB</a></li>
+<li class="toc-entry toc-h3"><a href="#sign-the-kernel">Sign the kernel</a></li>
+<li class="toc-entry toc-h3"><a href="#enroll-the-mok-via-mokmanager">Enroll the MOK via MOKManager</a></li>
+<li class="toc-entry toc-h3"><a href="#enable-secure-boot-in-virtualbox">Enable Secure Boot in VirtualBox</a></li>
+</ul>
+</li>
+<li class="toc-entry toc-h2"><a href="#automate-signing-on-updates">Automate signing on updates</a>
+<ul>
+<li class="toc-entry toc-h3"><a href="#sign-grub">Sign GRUB</a></li>
+<li class="toc-entry toc-h3"><a href="#sign-kernels">Sign kernels</a></li>
+</ul>
+</li>
+<li class="toc-entry toc-h2"><a href="#closing-thoughts">Closing thoughts</a></li>
+<li class="toc-entry toc-h2"><a href="#suggested-readings">Suggested readings</a></li>
+</ul><p>This article explains how to setup UEFI Secure Boot on Arch Linux, so
+that the firmware can verify all components that sit between itself and
+the kernel. This is useful if you need to dual-boot a PC that came with
+Windows preinstalled and with Secure Boot enabled and you don’t want to
+keep it disabled after installing Arch.</p>
+
+<p>To keep things simple, we’ll use a VirtualBox machine running Arch as
+our target system. This way, we do not have to worry about damaging a
+working system by modifying the keys pre-enrolled in the firmware.</p>
+
+<p>Only Secure Boot itself is covered: full disk encryption will be covered
+in a separate article.</p>
+
+<h2 id="prerequisites">
+<a class="anchor" href="#prerequisites" aria-hidden="true"><span class="octicon octicon-link"></span></a>Prerequisites</h2>
+
+<p>To prepare our Arch machine, we’ll use <a href="https://github.com/binary-manu/arch-ansible">arch-ansible</a>, a
+playbook designed to provision Arch VMs in minutes. There is already a
+preset that builds a VirtualBox VM in UEFI mode.</p>
+
+<p>This guide assumes the host is a Linux system, but it should work on
+Windows hosts as well, although you’ll have to adapt the commands run on
+the host or perform equivalent operations from the GUI.</p>
+
+<p>Before starting, you’ll need to install the following tools:</p>
+
+<ul>
+  <li><a href="https://www.virtualbox.org/">VirtualBox 7 or higher</a></li>
+  <li><a href="https://www.packer.io">HashiCorp Packer</a></li>
+</ul>
+
+<p>Note that VirtualBox can’t usually run alongside other hypervisors. If
+you are currently running another virtualization tools such as QEMU, the
+Android Emulator, VMWare Workstation or Hyper-V, you may need to stop
+your VMs or disable the hypervisor first, in order to release the
+hardware virtualization features of the CPU for VirtualBox to use.</p>
+
+<h2 id="prepare-the-vm">
+<a class="anchor" href="#prepare-the-vm" aria-hidden="true"><span class="octicon octicon-link"></span></a>Prepare the VM</h2>
+
+<p>Now that the tools are in place, download <a href="https://github.com/binary-manu/arch-ansible/archive/refs/heads/master.zip">arch-ansible’s
+source</a>. From the host CLI type:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># We'll keep our configurations, the playbook and the produced</span>
+<span class="c"># OVF files here.</span>
+<span class="nb">mkdir</span> <span class="nt">-p</span> ~/arch-secure-boot/
+<span class="nb">cd</span> ~/arch-secure-boot/
+curl <span class="nt">-sLo</span> arch-ansible.zip https://github.com/binary-manu/arch-ansible/archive/refs/heads/master.zip
+unzip <span class="nt">-q</span> arch-ansible.zip
+<span class="nb">cd </span>arch-ansible-master
+</code></pre></div></div>
+
+<p><em>WARNING: the snippet above always fetches the most recent version of
+the playbook. Due to Arch’s rolling release nature, older versions may
+stop working every now and then. For the same reason, some commands may
+have changed slightly over time. If the snippets below do not work as
+expected, check manual pages to see if something changed.</em></p>
+
+<p>Now we are in the root of the playbook. Before running it we must add an
+extra configuration file: these extra settings prepare the disk for UEFI
+boot by creating an ESP, and also add a user account:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cat</span> <span class="o">&lt;&lt;</span> <span class="sh">'</span><span class="no">EOF</span><span class="sh">' &gt;&gt; ansible/group_vars/all/50-uefi.yaml
+
+# Use the gpt_singlepart partitioning flow, which creates
+# a FAT32 ESP and installs GRUB to it.
+disksetup_roles_prefix: "disksetup/gpt_singlepart/"
+
+# Set root's password
+users_root_info:
+    password: "secboot"
+
+# Create a 'secboot' user with password 'secboot'
+users_info:
+  secboot:
+    password: "secboot"
+    is_admin: true
+    groups: []
+</span><span class="no">
+EOF
+</span></code></pre></div></div>
+
+<p>After that, we can start the provisioning using Packer. This will create
+a new VirtualBox VM with GUI, so you’ll see it on your screen. Inside
+the VM, a complete Arch installation goes on. When it’s over, the VM
+will be exported to OVF format. Don’t interact with the VM during the
+process, as this may interfere with installation: for example, the
+provisioner will simulate keyboard input to the machine, and if you also
+type text this will disrupt the process.</p>
+
+<p>The installation can take a while, depending on your Internet
+connection.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cd </span>packer
+
+<span class="c"># Build the machine</span>
+packer build <span class="nt">-force</span> <span class="nt">-only</span> virtualbox-uefi packer-template.json
+
+<span class="c"># Import it into VirtualBox</span>
+VBoxManage import <span class="nt">--vsys</span> 0 output-virtualbox-uefi/<span class="k">*</span>.ovf
+</code></pre></div></div>
+
+<p>Now you’ll find the new VM (named <code class="language-plaintext highlighter-rouge">packer-&lt;something&gt;</code>) in VirtualBox.
+Run it and Arch should start. Login with user <code class="language-plaintext highlighter-rouge">secboot</code> and password
+<code class="language-plaintext highlighter-rouge">secboot</code>, then run <code class="language-plaintext highlighter-rouge">startx</code> to start XFCE.</p>
+
+<h2 id="a-short-explanation-of-secure-boot">
+<a class="anchor" href="#a-short-explanation-of-secure-boot" aria-hidden="true"><span class="octicon octicon-link"></span></a>A short explanation of Secure Boot</h2>
+
+<h3 id="uefi-keys">
+<a class="anchor" href="#uefi-keys" aria-hidden="true"><span class="octicon octicon-link"></span></a>UEFI keys</h3>
+
+<p>Secure Boot is a feature of UEFI firmwares which increases the security
+of the system by booting only components (such as bootloaders and
+kernels) which are <em>trusted</em>. There are two ways to mark a component as
+trusted:</p>
+
+<ul>
+  <li>sign it: the component is signed using the private part of an
+asymmetric key pair (usually RSA2048); the public part then needs to
+be loaded into the firmware database of trusted keys;</li>
+  <li>enroll its hash: the digest (usually SHA256) of such component is
+stored into the firmware database of trusted hashes. In UEFI, keys and
+hashes share the same database, which is described below.</li>
+</ul>
+
+<p>Both methods work, but each one have drawbacks: hashes are easier than
+keys to work with. However, they change every time a file is modified,
+so if a boot component is updated frequently (for example, GRUB gets
+updated), the new hash must be enrolled in the firmware, which can be a
+hassle.</p>
+
+<p>Signing is more articulated, but since we only enroll the keys, as long
+as those keys can be used (i.e. the have not been compromised) there is
+no need to update the firmware database.</p>
+
+<p>In this guide, we will go the signing route. Before that, we need to
+briefly talk about the key infrastructure in UEFI. More details are
+available <a href="https://blog.hansenpartnership.com/the-meaning-of-all-the-uefi-keys/">in this article</a>.</p>
+
+<p>Every UEFI Secure Boot implementation starts with the <em>PK</em> (<em>Platform
+Key</em>).  This is the most important key, as it is used as the root of
+trust chains. Secure Boot cannot be enabled unless a PK has been
+enrolled and there is usually only one PK. The PK is not directly used
+to sign boot components.  Instead, it is used to:</p>
+
+<ul>
+  <li>disable Secure Boot;</li>
+  <li>sign KEKs, the next level of keys.</li>
+</ul>
+
+<p>A <em>KEK</em> (<em>Key Exchange Key</em>) can be added to the UEFI only if it’s
+signed with the PK, and it’s role is to sign updates to the keys/hashes
+database.  There can be many KEKs enrolled at the same time.</p>
+
+<p>The keys and hashes used to validate boot components reside in the <em>DB</em>
+and <em>DBX</em> databases:</p>
+
+<ul>
+  <li>DB is an allowlist that contains keys and/or hashes. If a component is
+signed with a key stored here, or its hash is stored here, the
+component is allowed to boot;</li>
+  <li>DBX is a denylist and works just like DB, with the obvious exception
+that if a key or hash is stored here, components signed with that key
+or matching that hash <em>will not</em> be allowed to boot.</li>
+</ul>
+
+<p>DBX takes precedence over DB when doing checks: a component will be
+allowed to boot if it doesn’t match DBX but matches DB. If it matches
+neither, it will not boot, since it cannot be verified using the
+enrolled keys. Updates to DB or DBX are accepted only if signed by a
+KEK.</p>
+
+<p>This diagram summarizes signed-by relationships between keys and
+databases:</p>
+
+<p><a href="https://mermaid.live/edit#pako:eNqVkb9ugzAQxl_ldHN4AYYOhEyoUqUuSHEHC1_ACvYh2wxRyLv3wCJKhwz1dP7u99n3544dG8IS-6CnAZQHOV8NFEXxsUTb-7g0pybLErzqdTWf6wrmyehEP2-QdmXav5AYM2R9THocyYD1iYXe8-07oN2JLQ9Lxz5poSANBIOOA3CA9W_re7jSDfiyVMdzxZygYzexJ5-eZbT_emV14QEdBaetkZHdV0WhmBwpLCU0OlwVKv8QLrd8MjZxwDKFmQ6o58TfN9_t98zUVsv0HZYXPUZRafN85r1s63n8Atg1ipA"><img src="https://mermaid.ink/img/pako:eNqVkb9ugzAQxl_ldHN4AYYOhEyoUqUuSHEHC1_ACvYh2wxRyLv3wCJKhwz1dP7u99n3544dG8IS-6CnAZQHOV8NFEXxsUTb-7g0pybLErzqdTWf6wrmyehEP2-QdmXav5AYM2R9THocyYD1iYXe8-07oN2JLQ9Lxz5poSANBIOOA3CA9W_re7jSDfiyVMdzxZygYzexJ5-eZbT_emV14QEdBaetkZHdV0WhmBwpLCU0OlwVKv8QLrd8MjZxwDKFmQ6o58TfN9_t98zUVsv0HZYXPUZRafN85r1s63n8Atg1ipA?type=png" alt=""></a></p>
+
+<p>While a user can generate and enroll it own PK, KEKs, and DB keys, doing
+so poses some issues. First, some systems, like corporate laptops, come
+with Secure Boot on, so there must already be a PK and KEK, plus some
+keys or hashes in the DB. Removing them will make the system unbootable
+unless they are re-enrolled or the boot components are signed with the
+new keys. Second, these keys are sometimes used to sign UEFI drivers and
+again, removing them prevents these drivers from loading. This is
+especially painful when the driver in question is the GPU one, since it
+means you will no longer get video output (see <a href="https://www.reddit.com/r/archlinux/comments/pec41w/secure_boot_selfsigned_keys_nvidia_gpu_bricked/">this post on
+Reddit</a>).</p>
+
+<p>However, to enroll keys to DB, we need to know the private part of at
+least one KEK or enroll a new one. And to enroll a new KEK we need the
+private part of the PK.  Which we don’t usually have if these came
+pre-enrolled and belong to some big vendor.  There are two solutions to
+this problem.</p>
+
+<p>The first solution involves the fact that most UEFI management GUIs
+allow the enrollment of new keys even if you don’t know the PK or a KEK.
+However, for the reasons above, I’d prefer not to fiddle with PK/KEK/DB.
+So we move to the second solution. Meet <em>shim</em>.</p>
+
+<h3 id="the-shim-bootloader">
+<a class="anchor" href="#the-shim-bootloader" aria-hidden="true"><span class="octicon octicon-link"></span></a>The <em>shim</em> bootloader</h3>
+
+<p><a href="https://github.com/rhboot/shim"><em>shim</em></a> is an open source bootloader, designed to work as a
+bridge between the default keys that come pre-enrolled in most Windows
+PCs and boot components signed by the user.</p>
+
+<p>We said that when Secure Boot is on, only signed components can boot.
+And the trusted keys pre-enrolled in the UEFI usually belong to
+Microsoft for a Windows PC. Thus, only Microsoft can sign stuff, And
+they usually don’t. First, they don’t sign GNU GPL licensed software for
+policy reasons. Second, having to sign builds of fast-moving FOSS
+projects for different distros (since every distro ships its own binary
+for GRUB and the kernel) would be impractical. However, Microsoft <em>signs
+official pre-built shim binaries</em>. Thus, shim will usually boot on PCs
+that come with Windows preinstalled, even when Secure Boot is enabled.</p>
+
+<p>shim, by itself, does very little. It simply verifies the signature of a
+next-stage bootloader (usually GRUB) and loads it. The <em>very important</em>
+thing to note is that, in addition to the keys/hashes in DB, shim can
+also use its own, dedicated database of keys and hashes, called the <em>MOK
+(Machine Owner Key) database</em>.</p>
+
+<p>MOKs can be enrolled by the user using a combination of command line
+utilities from Linux plus a shim helper called <em>MOKManager</em>. Altering
+the MOK database may make your Linux distro unbootable, but has no
+effect on things signed using the other UEFI keys, so there is no risk
+of loosing the video card.</p>
+
+<p>The rest of this article will show how to setup shim and MOKManager,
+generate our MOK, enroll it and use it to sign GRUB and the kernel.
+We’ll start with an Arch Linux installation on a UEFI system with Secure
+Boot disabled, prepare it for Secure Boot and then enable it.</p>
+
+<p>To avoid generating and enrolling our own set of PK/KEK/DB keys into the
+VM UEFI, we’ll use a new feature of VirtualBox 7.x, which can
+automatically enroll well-known Microsoft keys.</p>
+
+<h2 id="setup">
+<a class="anchor" href="#setup" aria-hidden="true"><span class="octicon octicon-link"></span></a>Setup</h2>
+
+<h3 id="install-shim-and-other-utils">
+<a class="anchor" href="#install-shim-and-other-utils" aria-hidden="true"><span class="octicon octicon-link"></span></a>Install shim and other utils</h3>
+
+<p>The very first thing to do is installing shim and a bunch of utilities
+that will be needed to enrolls MOKs and sign files. You’ll need to use
+an AUR helper to install shim. The test machine comes with <code class="language-plaintext highlighter-rouge">yay</code>.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>yay <span class="nt">-S</span> shim-signed mokutil sbsigntools efitools
+</code></pre></div></div>
+
+<p>Installing this packages will <em>not</em> put shim into the ESP. We’ll need to
+copy files manually. <code class="language-plaintext highlighter-rouge">pacman -Ql shim-signed</code> reveals the following:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>shim-signed /usr/
+shim-signed /usr/share/
+shim-signed /usr/share/shim-signed/
+shim-signed /usr/share/shim-signed/fbia32.efi
+shim-signed /usr/share/shim-signed/fbx64.efi
+shim-signed /usr/share/shim-signed/mmia32.efi
+shim-signed /usr/share/shim-signed/mmx64.efi
+shim-signed /usr/share/shim-signed/shimia32.efi
+shim-signed /usr/share/shim-signed/shimx64.efi
+</code></pre></div></div>
+
+<p>We need to copy the 64-bit versions of shim and MOKManager, which
+correspond to <code class="language-plaintext highlighter-rouge">shimx64.efi</code> and <code class="language-plaintext highlighter-rouge">mmx64.efi</code>. They will go under
+<code class="language-plaintext highlighter-rouge">/boot/efi/EFI/arch</code>, where <code class="language-plaintext highlighter-rouge">arch</code> is the folder that GRUB created
+during the install. Don’t worry about breaking the non-Secure Boot
+setup, this folder is duplicated as <code class="language-plaintext highlighter-rouge">/boot/efi/EFI/Boot</code>, the default
+boot path to use when no boot variable is defined in the UEFI.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Copy shim and MOKManager</span>
+<span class="nb">sudo cp</span> /usr/share/shim-signed/<span class="o">{</span>shim,mm<span class="o">}</span>x64.efi /boot/efi/EFI/arch
+
+<span class="c"># Add a new boot entry for shim</span>
+<span class="nb">sudo </span>efibootmgr <span class="nt">-c</span> <span class="nt">--loader</span> <span class="s1">'\EFI\arch\shimx64.efi'</span> <span class="nt">--label</span> ArchLinux
+</code></pre></div></div>
+
+<p>Note how <code class="language-plaintext highlighter-rouge">efibootmgr</code> created a new entry:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>   BootCurrent: 0001
+   Timeout: 0 seconds
+👉 BootOrder: 0004,0000,0001,0002,0003
+   Boot0000* UiApp	FvVol(7cb8bdc9-f8eb-4f34-aaea-3ee4af6516a1)/FvFile(462caa21-7614-4503-836e-8ab6f4662331)
+   Boot0001* UEFI VBOX HARDDISK VBbd970c88-d62b41ba 	PciRoot(0x0)/Pci(0xd,0x0)/Sata(0,65535,0){auto_created_boot_option}
+   Boot0002* UEFI PXEv4 (MAC:080027DE02FE)	PciRoot(0x0)/Pci(0x3,0x0)/MAC(080027de02fe,1)/IPv4(0.0.0.00.0.0.0,0,0){auto_created_boot_option}
+   Boot0003* EFI Internal Shell	FvVol(7cb8bdc9-f8eb-4f34-aaea-3ee4af6516a1)/FvFile(7c04a583-9e3e-4f1c-ad65-e05268d0b4d1)
+👉 Boot0004* ArchLinux	HD(1,GPT,7e16b474-4294-4fe3-8570-0dfec47972a9,0x800,0x100000)/File(\EFI\arch\shimx64.efi
+</code></pre></div></div>
+
+<p>The <code class="language-plaintext highlighter-rouge">BootOrder</code> line  shows in which order boot entries are tried.  shim
+is 0004, the first item, so if we rebooted now, shim would be loaded.
+Don’t do that yet, because shim is only a bridge that calls a next stage
+bootloader, but we haven’t installed one yet.  We’ll use GRUB as our
+next-stage bootloader, but before that we need to sign it, and before
+signing anything, we must generate and enroll our MOK.</p>
+
+<h3 id="mok-generation">
+<a class="anchor" href="#mok-generation" aria-hidden="true"><span class="octicon octicon-link"></span></a>MOK generation</h3>
+
+<p>MOKs are simply X.509 certificates paired with their private keys, and
+can be generated using <code class="language-plaintext highlighter-rouge">openssl</code>. Pay attention to the opening and
+closing parentheses in the snippet below, they must be copied too.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">(</span>
+  <span class="nb">umask </span>077
+  <span class="nb">sudo mkdir</span> /etc/secure-boot
+  <span class="nb">sudo </span>openssl req                       <span class="se">\</span>
+    <span class="nt">-new</span>                                 <span class="se">\</span>
+    <span class="nt">-x509</span>                                <span class="se">\</span>
+    <span class="nt">-nodes</span>                               <span class="se">\</span>
+    <span class="nt">-newkey</span> rsa:2048                     <span class="se">\</span>
+    <span class="nt">-keyout</span> /etc/secure-boot/mok.key.pem <span class="se">\</span>
+    <span class="nt">-out</span>    /etc/secure-boot/mok.crt.pem <span class="se">\</span>
+    <span class="nt">-subj</span>   <span class="s2">"/CN=Manu's MOK/"</span>            <span class="se">\</span>
+    <span class="nt">-days</span>   9999
+  <span class="nb">sudo </span>openssl x509                      <span class="se">\</span>
+    <span class="nt">-in</span>  /etc/secure-boot/mok.crt.pem    <span class="se">\</span>
+    <span class="nt">-out</span> /etc/secure-boot/mok.crt.der    <span class="se">\</span>
+    <span class="nt">-outform</span> DER
+<span class="o">)</span>
+</code></pre></div></div>
+
+<p>We have created a folder <code class="language-plaintext highlighter-rouge">/etc/secure-boot</code> only accessible to root,
+that will store all our Secure Boot related stuff.  Inside it, we have a
+PEM private key (RSA 2048) and a self-signed certificate. The private
+key is not encrypted: a fact that will make it easier to automatically
+sign GRUB and kernels on updates, but also means than anyone who can
+read the file can get our MOK. That’s why it is critical that the folder
+can only be accesses by root.  In addition, we converted the certificate
+from PEM to DER form: <code class="language-plaintext highlighter-rouge">mok.crt.*</code> files store the same exact data in two
+different representations. This is because some tools require the
+former, while others require the latter.</p>
+
+<h3 id="schedule-the-mok-for-enrollment">
+<a class="anchor" href="#schedule-the-mok-for-enrollment" aria-hidden="true"><span class="octicon octicon-link"></span></a>Schedule the MOK for enrollment</h3>
+
+<p>The <code class="language-plaintext highlighter-rouge">mokutil</code> tool can be used to inspect, add and remove keys from the
+MOK database. Actually, it doesn’t really add (or remove) keys, it
+schedules them for addition (or removal). The real update will be
+performed during the next reboot when shim is loaded.</p>
+
+<p>To schedule our new MOK for addition, type:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>mokutil <span class="nt">--import</span> /etc/secure-boot/mok.crt.der
+</code></pre></div></div>
+
+<p>You’ll be asked for a password twice: type whatever you want. This
+password will be asked by MOKManager when enrolling the key later after
+reboot. Pay attention to the fact that you may also be asked for your
+system password by <code class="language-plaintext highlighter-rouge">sudo</code> before that.</p>
+
+<p>Note two things:</p>
+
+<ul>
+  <li>
+<code class="language-plaintext highlighter-rouge">mokutil</code> requires DER data;</li>
+  <li>we are uploading the certificate, not the key file. Only the public
+key is added to the MOK database, and the certificate contains the
+public key as well as other information such as the Common Name of the
+owner.</li>
+</ul>
+
+<h3 id="install-grub">
+<a class="anchor" href="#install-grub" aria-hidden="true"><span class="octicon octicon-link"></span></a>Install GRUB</h3>
+
+<p>Normally, we would install GRUB using the <code class="language-plaintext highlighter-rouge">grub-install</code> script. This
+installation mode places a small EFI executable on the ESP, while
+leaving the rest of GRUB (such as modules) on <code class="language-plaintext highlighter-rouge">/boot</code>. GRUB can
+dynamically load the rest of its modules at runtime.  However, when
+running under Secure Boot, loading code from external files is disabled:
+everything must reside into the EFI executable on the ESP.</p>
+
+<p>To create such an image, GRUB provides <code class="language-plaintext highlighter-rouge">grub-mkstandalone</code>. It builds an
+EFI image containing all (or a user-supplied list of) GRUB modules, plus
+an initial configuration file. This is what we’ll sign and deploy.</p>
+
+<p>The initial configuration file can be used to customize the behaviour of
+GRUB when it starts. A typical use case is to make it load an external
+configuration file located on the ESP. The external file can then be
+regenerated using <code class="language-plaintext highlighter-rouge">grub-mkconfig</code> without altering (and thus re-signing)
+the EFI image. Note that, unlike modules, loading external configuration
+<em>is</em> allowed.</p>
+
+<p>To create our image, type:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Generate the embedded configuration file</span>
+<span class="nb">sudo dd </span><span class="nv">status</span><span class="o">=</span>none <span class="nv">of</span><span class="o">=</span>/etc/secure-boot/grub.cfg <span class="o">&lt;&lt;</span> <span class="sh">'</span><span class="no">EOF</span><span class="sh">'
+configfile </span><span class="k">${</span><span class="nv">cmdpath</span><span class="k">}</span><span class="sh">/grub.cfg
+</span><span class="no">EOF
+
+</span><span class="c"># Generate the EFI all-in-one image</span>
+<span class="nb">sudo </span>grub-mkstandalone                           <span class="se">\</span>
+  <span class="nt">--compress</span><span class="o">=</span>xz                                  <span class="se">\</span>
+  <span class="nt">--format</span><span class="o">=</span>x86_64-efi                            <span class="se">\</span>
+  <span class="nt">--modules</span><span class="o">=</span><span class="s1">'part_gpt part_msdos'</span>                <span class="se">\</span>
+  <span class="nt">--sbat</span><span class="o">=</span>/usr/share/grub/sbat.csv                <span class="se">\</span>
+  <span class="nt">--output</span><span class="o">=</span>/boot/efi/EFI/arch/grubx64.efi        <span class="se">\</span>
+  /boot/grub/grub.cfg<span class="o">=</span>/etc/secure-boot/grub.cfg
+
+<span class="c"># Generate full configuration</span>
+<span class="nb">sudo </span>grub-mkconfig <span class="nt">-o</span> /boot/efi/EFI/arch/grub.cfg
+</code></pre></div></div>
+
+<p>Let’s explain some of the options:</p>
+
+<ul>
+  <li>
+<code class="language-plaintext highlighter-rouge">compress</code> requests that the EFI file is compressed to save space.
+Here we used XZ compression, the slowest but most efficient one;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">format</code> specifies the format of the output file. <code class="language-plaintext highlighter-rouge">x86_64-efi</code> means
+we want something suitable for a 64-bit UEFI system;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">output</code> is the place where the output file will live. We are going to
+reuse the <code class="language-plaintext highlighter-rouge">arch</code> entry created by the installer, so GRUB is placed
+there. <em>Important</em>: don’t change the base name: it <em>MUST</em> be
+<code class="language-plaintext highlighter-rouge">grubx64.efi</code>. shim will only load a file with this name;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">modules</code> lists which modules must be preloaded when GRUB starts: here
+we ask to preload modules that parse legacy and GPT partitioning
+schemes. Without this, GRUB may be unable to detect disk partitions at
+boot;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">sbat</code> is the most interesting. <em>Secure Boot Advanced Targeting</em> is a
+feature that embeds generation numbers of boot components inside them
+to make it easier for a bootloader to determine if a boot component is
+vulnerable. Arch’s GRUB package comes with its own SBAT definition
+file, which must be embedded into the final EFI image. shim will
+refuse to load stuff without SBAT information. For more details about
+SBAT, see <a href="https://github.com/rhboot/shim/blob/main/SBAT.md">this page</a>;</li>
+  <li>the last line copies the embedded configuration file into the image,
+making it available as <code class="language-plaintext highlighter-rouge">/boot/grub/grub.cfg</code>. The GRUB image contains
+an embedded filesystem known as <code class="language-plaintext highlighter-rouge">(ramdisk)</code> which can be accessed like
+any other volume, for example <code class="language-plaintext highlighter-rouge">(hd0,gpt1)</code>.</li>
+</ul>
+
+<p>The syntax of files copied into the ramdisk is
+<code class="language-plaintext highlighter-rouge">/path/into/image=/path/on/filesystem</code>. <code class="language-plaintext highlighter-rouge">/boot/grub/grub.cfg</code> is the default
+configuration file loaded by GRUB when it starts, so we must name it as
+such. Its contents do nothing more than immediately directing GRUB to
+load an external configuration <code class="language-plaintext highlighter-rouge">${cmdpath}/grub.cfg</code>. The <code class="language-plaintext highlighter-rouge">cmdpath</code>
+variable is a runtime value provided by GRUB that points to the folder
+containing the EFI image. It allows referring to files installed
+alongside GRUB without having to explicitly state paths and thus makes
+configurations reusable. In our case, it will expand to GRUB’s notion of
+<code class="language-plaintext highlighter-rouge">/boot/efi/EFI/arch</code>, which may be something like <code class="language-plaintext highlighter-rouge">(hd0,gpt1)/EFI/arch</code>.</p>
+
+<p>The last thing to do to have a working GRUB is to sign it. For this, we
+must use <code class="language-plaintext highlighter-rouge">sbsign</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>sbsign                               <span class="se">\</span>
+  <span class="nt">--key</span>    /etc/secure-boot/mok.key.pem   <span class="se">\</span>
+  <span class="nt">--cert</span>   /etc/secure-boot/mok.crt.pem   <span class="se">\</span>
+  <span class="nt">--output</span> /boot/efi/EFI/arch/grubx64.efi <span class="se">\</span>
+           /boot/efi/EFI/arch/grubx64.efi
+</code></pre></div></div>
+
+<p>The PEM MOK key and certificate plus the unsigned GRUB image get in, and
+a signed image gets out. Note that you can use the same pathname for
+both input and output and that, unlike <code class="language-plaintext highlighter-rouge">mokutil</code>, the DER certificate is
+not used here.</p>
+
+<p>With this step, we have completed your deployment of shim and GRUB,
+including configuration files and signatures. Secure Boot is still
+disabled, since the machine lacks a PK, as can be proven by issuing:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>efi-readvar
+</code></pre></div></div>
+
+<p>The output reports that all key DBs are empty.</p>
+
+<h3 id="sign-the-kernel">
+<a class="anchor" href="#sign-the-kernel" aria-hidden="true"><span class="octicon octicon-link"></span></a>Sign the kernel</h3>
+
+<p>Just like GRUB, the kernel must also be signed, while initramfses need
+not be signed. Again, <code class="language-plaintext highlighter-rouge">sbsign</code> comes to the rescue. For simplicity,
+we’ll sign just one kernel here, in spite of the fact that a real system
+may have multiple kernels installed and all of them need to be signed.
+We’ll handle this issue later, when we’ll setup <code class="language-plaintext highlighter-rouge">pacman</code> hooks to
+automatically sign GRUB and the kernels on updates.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>sbsign                               <span class="se">\</span>
+  <span class="nt">--key</span>    /etc/secure-boot/mok.key.pem   <span class="se">\</span>
+  <span class="nt">--cert</span>   /etc/secure-boot/mok.crt.pem   <span class="se">\</span>
+  <span class="nt">--output</span> /boot/vmlinuz-linux            <span class="se">\</span>
+           /boot/vmlinuz-linux
+</code></pre></div></div>
+
+<p>We’ll now reboot the system to trigger MOKManager and add the new MOK to
+the database.</p>
+
+<h3 id="enroll-the-mok-via-mokmanager">
+<a class="anchor" href="#enroll-the-mok-via-mokmanager" aria-hidden="true"><span class="octicon octicon-link"></span></a>Enroll the MOK via MOKManager</h3>
+
+<p>Restart the machine. Now, instead of GRUB, we’ll see a blue screen. This
+is MOKManager, a UEFI application that takes care of enrolling and
+removing MOKs from the system. The following short video shows how to
+enroll the keys. A textual description of the steps follow.</p>
+
+<video controls="" width="640" height="480">
+  <source src="/binary-is-better/assets/my/mov/mokmanager.webm"></source>
+</video>
+
+<p>shim noticed that some MOKs are scheduled for addition and launched
+MOKManager to handle that. We have 10 seconds to press a key, otherwise
+the boot will continue and our scheduled MOK will be forgotten,
+requiring us to call <code class="language-plaintext highlighter-rouge">mokutil</code> again.</p>
+
+<p>We can choose to enroll a MOK from a disk file or from the list of
+pending keys. Choose <code class="language-plaintext highlighter-rouge">Enroll MOK</code> to do the latter, since MOKManager
+cannot read <code class="language-plaintext highlighter-rouge">ext4</code> or other POSIX filesystems.</p>
+
+<p>Is it possible to view the key before enrolling it, to be sure of its
+contents.  That confirms the key’s identity.</p>
+
+<p>Press a key to go back to menu and now choose <code class="language-plaintext highlighter-rouge">Continue</code>: MOKManager
+will ask for confirmation to enroll. The last step is to enter the
+password chosen previously when calling <code class="language-plaintext highlighter-rouge">mokutil</code>. After, that it asks
+for a reboot, which we accept. The MOK is now enrolled, altough Secure
+Boot is still disabled.</p>
+
+<h3 id="enable-secure-boot-in-virtualbox">
+<a class="anchor" href="#enable-secure-boot-in-virtualbox" aria-hidden="true"><span class="octicon octicon-link"></span></a>Enable Secure Boot in VirtualBox</h3>
+
+<p>After shutting down the VM, open its settings and go under <code class="language-plaintext highlighter-rouge">System</code>. The
+lower part of the window shows the Secure Boot settings. First, check
+the <code class="language-plaintext highlighter-rouge">Enable Secure Boot</code> box, then click the <code class="language-plaintext highlighter-rouge">Reset Keys to Default</code>
+button.  Answer <code class="language-plaintext highlighter-rouge">Yes</code> to the confirmation dialog. Now restart the
+machine.</p>
+
+<p><img src="/binary-is-better/assets/my/img/vbox_sb.png" alt="Enable Secure Boot in VirtualBox"></p>
+
+<p>On a real machine, the keys would be already there, so the only step
+needed would be to switch Secure Boot on.</p>
+
+<p><em>WARNING: don’t press <code class="language-plaintext highlighter-rouge">Reset Keys to Default</code> more than once. If you
+uncheck and then check <code class="language-plaintext highlighter-rouge">Enable Secure Boot</code> the button becomes active
+again, but it seems that every time it’s clicked, VirtualBox appends,
+rather than replacing, UEFI keys. This results in a weird state that
+makes Secure Boot unusable.</em></p>
+
+<p>Linux should now boot and prove that we deployed and signed all pieces
+correctly. When in Linux, use the following commands to list all keys:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>mokutil <span class="nt">--list-enrolled</span> <span class="c"># Shows the MOKs</span>
+<span class="nb">sudo </span>efi-readvar             <span class="c"># Shows PK/KEK/DB/DBX</span>
+</code></pre></div></div>
+
+<h2 id="automate-signing-on-updates">
+<a class="anchor" href="#automate-signing-on-updates" aria-hidden="true"><span class="octicon octicon-link"></span></a>Automate signing on updates</h2>
+
+<p>Until now, we’ve signed stuff manually. This is educational, but will
+break as soon as the kernel is upgraded: the new kernel won’t be signed
+and won’t boot. Also, we signed just the default kernel, but
+realistically we may have a bunch of them installed: LTS, Zen, …</p>
+
+<p>Luckily, <code class="language-plaintext highlighter-rouge">pacman</code> hooks can be used to automatically run scripts during
+the installation of packages. We can setup a couple of them to
+automatically sign new kernels and GRUB.</p>
+
+<h3 id="sign-grub">
+<a class="anchor" href="#sign-grub" aria-hidden="true"><span class="octicon octicon-link"></span></a>Sign GRUB</h3>
+
+<p>We’ll arrange that, when the GRUB package is updates, a hook takes care
+of regenerating the standalone image, signing it and copying it in place
+of the old one, while preserving the most recent old version, in case
+the new image has problems.</p>
+
+<p>This is the hook definition:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo mkdir</span> <span class="nt">-p</span> /etc/pacman.d/hooks
+
+<span class="nb">sudo dd </span><span class="nv">status</span><span class="o">=</span>none <span class="nv">of</span><span class="o">=</span>/etc/pacman.d/hooks/99-sign-grub-for-secure-boot.hook <span class="o">&lt;&lt;</span> <span class="sh">'</span><span class="no">EOF</span><span class="sh">'
+[Trigger]
+Operation = Upgrade
+Type      = Package
+Target    = grub
+
+[Action]
+Description = Sign GRUB with Machine Owner Key for Secure Boot
+When        = PostTransaction
+Exec        = /etc/secure-boot/sign-grub
+Depends     = sbsigntools
+</span><span class="no">EOF
+</span></code></pre></div></div>
+
+<p>The actual code is located in a separate script file for readability:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo dd </span><span class="nv">status</span><span class="o">=</span>none <span class="nv">of</span><span class="o">=</span>/etc/secure-boot/sign-grub <span class="o">&lt;&lt;</span> <span class="sh">'</span><span class="no">EOF</span><span class="sh">'
+#!/bin/sh
+
+set -e
+
+GRUB_ENTRY=/boot/efi/EFI/arch
+GRUB_TMP="</span><span class="nv">$GRUB_ENTRY</span><span class="sh">/grubx64.efi.tmp"
+GRUB_TARGET="</span><span class="nv">$GRUB_ENTRY</span><span class="sh">/grubx64.efi"
+GRUB_BACKUP="</span><span class="nv">$GRUB_ENTRY</span><span class="sh">/grubx64.efi.bkp"
+GRUB_CFG="</span><span class="nv">$GRUB_ENTRY</span><span class="sh">/grub.cfg"
+GRUB_CFG_TMP="</span><span class="nv">$GRUB_ENTRY</span><span class="sh">/grub.cfg.tmp"
+GRUB_CFG_BACKUP="</span><span class="nv">$GRUB_ENTRY</span><span class="sh">/grub.cfg.bkp"
+GRUB_SBAT="/usr/share/grub/sbat.csv"
+
+trap '/usr/bin/rm -f "</span><span class="nv">$GRUB_TMP</span><span class="sh">" "</span><span class="nv">$GRUB_CFG_TMP</span><span class="sh">"' QUIT TERM INT EXIT
+
+/usr/bin/grub-mkstandalone                        </span><span class="se">\</span><span class="sh">
+  --compress=xz                                   </span><span class="se">\</span><span class="sh">
+  --format=x86_64-efi                             </span><span class="se">\</span><span class="sh">
+  --modules='part_gpt part_msdos'                 </span><span class="se">\</span><span class="sh">
+  --sbat="</span><span class="nv">$GRUB_SBAT</span><span class="sh">"                             </span><span class="se">\</span><span class="sh">
+  --output="</span><span class="nv">$GRUB_TMP</span><span class="sh">"                            </span><span class="se">\</span><span class="sh">
+  '/boot/grub/grub.cfg=/etc/secure-boot/grub.cfg'
+
+/usr/bin/sbsign                         </span><span class="se">\</span><span class="sh">
+  --key    /etc/secure-boot/mok.key.pem </span><span class="se">\</span><span class="sh">
+  --cert   /etc/secure-boot/mok.crt.pem </span><span class="se">\</span><span class="sh">
+  --output "</span><span class="nv">$GRUB_TMP</span><span class="sh">"                  </span><span class="se">\</span><span class="sh">
+  "</span><span class="nv">$GRUB_TMP</span><span class="sh">"
+
+/usr/bin/grub-mkconfig -o "</span><span class="nv">$GRUB_CFG_TMP</span><span class="sh">"
+
+/usr/bin/cp "</span><span class="nv">$GRUB_TARGET</span><span class="sh">" "</span><span class="nv">$GRUB_BACKUP</span><span class="sh">"
+/usr/bin/cp "</span><span class="nv">$GRUB_CFG</span><span class="sh">" "</span><span class="nv">$GRUB_CFG_BACKUP</span><span class="sh">"
+
+/usr/bin/mv "</span><span class="nv">$GRUB_TMP</span><span class="sh">" "</span><span class="nv">$GRUB_TARGET</span><span class="sh">"
+/usr/bin/mv "</span><span class="nv">$GRUB_CFG_TMP</span><span class="sh">" "</span><span class="nv">$GRUB_CFG</span><span class="sh">"
+</span><span class="no">EOF
+
+</span><span class="nb">sudo chmod </span>a+x /etc/secure-boot/sign-grub
+</code></pre></div></div>
+
+<p>Every time the package named <code class="language-plaintext highlighter-rouge">grub</code> is updated, the hook script runs. It
+generates a new standalone image in a temporary file, so that the real
+GRUB loaded by shim is not overwritten until the very end. It then signs
+the new image and regenerates the configuration file. The last step
+moves both temporary files into their final positions. Since the two
+rename operations are not atomic, there is chance that an error between
+them could leave GRUB and its configuration out of sync. All files
+already reside on the correct volume: the probability should be pretty
+low.</p>
+
+<p>To test if it’s working, we can reinstall <code class="language-plaintext highlighter-rouge">grub</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>pacman <span class="nt">-S</span> grub <span class="nt">--noconfirm</span>
+</code></pre></div></div>
+
+<p>If pacman spits no errors, everything went fine. You should also see log
+messages produced by the hook.</p>
+
+<h3 id="sign-kernels">
+<a class="anchor" href="#sign-kernels" aria-hidden="true"><span class="octicon octicon-link"></span></a>Sign kernels</h3>
+
+<p>The last step is to also arrange for kernel images to be signed. The
+procedure is very similar to what we did for GRUB, but we must handle</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo dd </span><span class="nv">status</span><span class="o">=</span>none <span class="nv">of</span><span class="o">=</span>/etc/pacman.d/hooks/99-sign-kernels-for-secure-boot.hook <span class="o">&lt;&lt;</span> <span class="sh">'</span><span class="no">EOF</span><span class="sh">'
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type      = Package
+Target    = linux
+Target    = linux-lts
+Target    = linux-zen
+Target    = linux-hardened
+
+[Action]
+Description = Sign kernels with Machine Owner Key for Secure Boot
+When        = PostTransaction
+Exec        = /etc/secure-boot/sign-kernels
+Depends     = sbsigntools
+Depends     = findutils
+Depends     = grep
+</span><span class="no">EOF
+</span></code></pre></div></div>
+
+<p>Every <code class="language-plaintext highlighter-rouge">Target</code> line matches a kernel package. You should add any
+additional kernel you are using.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo dd </span><span class="nv">status</span><span class="o">=</span>none <span class="nv">of</span><span class="o">=</span>/etc/secure-boot/sign-kernels <span class="o">&lt;&lt;</span> <span class="sh">'</span><span class="no">EOF</span><span class="sh">'
+#!/bin/sh
+
+set -e
+
+/usr/bin/find /boot/ -maxdepth 1 -name 'vmlinuz-*' -exec /bin/sh -c '
+  if ! /usr/bin/sbverify --list {} 2&gt;/dev/null |
+      /usr/bin/grep -q "signature certificates"; then
+    /usr/bin/sbsign                       </span><span class="se">\</span><span class="sh">
+      --key  /etc/secure-boot/mok.key.pem </span><span class="se">\</span><span class="sh">
+      --cert /etc/secure-boot/mok.crt.pem </span><span class="se">\</span><span class="sh">
+      --output {} {}
+  fi
+' </span><span class="se">\;</span><span class="sh">
+</span><span class="no">EOF
+
+</span><span class="nb">sudo chmod </span>a+x /etc/secure-boot/sign-kernels
+</code></pre></div></div>
+
+<p>Again, reinstall a kernel to verify it’s working:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>pacman <span class="nt">-S</span> linux <span class="nt">--noconfirm</span>
+</code></pre></div></div>
+
+<h2 id="closing-thoughts">
+<a class="anchor" href="#closing-thoughts" aria-hidden="true"><span class="octicon octicon-link"></span></a>Closing thoughts</h2>
+
+<p>This guide shows how to setup your Arch Linux installation to work under
+Secure Boot, using shim, GRUB and your own MOK keys. This solution is
+probably the less invasive ones, as the standard UEFI variables and
+databases are not touched. This should prove sufficient to run your
+distribution alongside Windows.</p>
+
+<p>There is one point we have not covered here: disk encryption. Secure
+Boot can make you system more hard to crack, but it’s pretty useless if
+your partitions are accessible in the clear to anyone who can simply
+remove the disk and place it into another machine. Normally, one would
+use LUKS together with Secure Boot. Disk encryption will be the topic for
+another article.</p>
+
+<p>It is also recommended to lock the UEFI management UI with a password.
+Otherwise, an attacker could just enter the firmware and disable Secure
+Boot.</p>
+
+<h2 id="suggested-readings">
+<a class="anchor" href="#suggested-readings" aria-hidden="true"><span class="octicon octicon-link"></span></a>Suggested readings</h2>
+
+<ul>
+  <li><a href="http://www.rodsbooks.com/efi-bootloaders/index.html">Managing EFI Boot Loaders for Linux by Rod Smith</a></li>
+  <li><a href="https://wiki.archlinux.org/title/Unified_Extensible_Firmware_Interface/Secure_Boot">ArchWiki: Unified Extensible Firmware Interface/Secure Boot</a></li>
+  <li><a href="https://media.defense.gov/2019/Jul/16/2002158058/-1/-1/0/CSI-BOOT-SECURITY-MODES-AND-RECOMMENDATIONS.PDF">NSA: Boot Security Modes and Recommendations</a></li>
+</ul>
+
+
+  </div>
+
+  <script src="https://utteranc.es/client.js"
+     repo="binary-manu/binary-is-better"
+     issue-term="pathname"
+     label="comment"
+     theme="preferred-color-scheme"
+     crossorigin="anonymous"
+     async>
+  </script>
+
+  <a class="u-url" href="/binary-is-better/linux/archlinux-secure-boot" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/binary-is-better/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Binary is better</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Emanuele Giacomelli</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <a rel="license" href="http://creativecommons.org/licenses/by/3.0/">
+          <img alt="Creative Commons License" style="border-width:0"
+            src="https://i.creativecommons.org/l/by/3.0/88x31.png">
+        </a><ul class="social-media-list"></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Personal notes about my software developer things</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

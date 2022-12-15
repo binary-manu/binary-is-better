@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Screen autoresize under VirtualBox Linux guests with mplugd | Binary is better</title>
+<meta name="generator" content="Jekyll v4.3.1" />
+<meta property="og:title" content="Screen autoresize under VirtualBox Linux guests with mplugd" />
+<meta name="author" content="Emanuele Giacomelli" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Users of VirtualBox know that one of its nicest features is automatic guest screen resizing. Basically, every time you perform an action that causes the VM window to change its size (i.e. switch it between fullscreen and windowed mode, or change its size by dragging a border) the guest will receive an event that will cause it to change the screen resolution to match the effective window size. This means that, when fullscreen mode is entered or exited, you don’t have to open the guest’s screen settings and change the resolution manually. Proper useful!" />
+<meta property="og:description" content="Users of VirtualBox know that one of its nicest features is automatic guest screen resizing. Basically, every time you perform an action that causes the VM window to change its size (i.e. switch it between fullscreen and windowed mode, or change its size by dragging a border) the guest will receive an event that will cause it to change the screen resolution to match the effective window size. This means that, when fullscreen mode is entered or exited, you don’t have to open the guest’s screen settings and change the resolution manually. Proper useful!" />
+<link rel="canonical" href="http://localhost:4000/binary-is-better/virtualbox/resize-vbox-screen-with-mplugd" />
+<meta property="og:url" content="http://localhost:4000/binary-is-better/virtualbox/resize-vbox-screen-with-mplugd" />
+<meta property="og:site_name" content="Binary is better" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-05-02T00:00:00+02:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Screen autoresize under VirtualBox Linux guests with mplugd" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2020-05-02T00:00:00+02:00","datePublished":"2020-05-02T00:00:00+02:00","description":"Users of VirtualBox know that one of its nicest features is automatic guest screen resizing. Basically, every time you perform an action that causes the VM window to change its size (i.e. switch it between fullscreen and windowed mode, or change its size by dragging a border) the guest will receive an event that will cause it to change the screen resolution to match the effective window size. This means that, when fullscreen mode is entered or exited, you don’t have to open the guest’s screen settings and change the resolution manually. Proper useful!","headline":"Screen autoresize under VirtualBox Linux guests with mplugd","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/binary-is-better/virtualbox/resize-vbox-screen-with-mplugd"},"url":"http://localhost:4000/binary-is-better/virtualbox/resize-vbox-screen-with-mplugd"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/binary-is-better/feed.xml" title="Binary is better" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/binary-is-better/">Binary is better</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/binary-is-better/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Screen autoresize under VirtualBox Linux guests with mplugd</h1>
+    <p class="post-meta">
+      
+      <time class="dt-published" datetime="2020-05-02T00:00:00+02:00" itemprop="datePublished">Published May 2, 2020
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <ul id="toc" class="section-nav">
+<li class="toc-entry toc-h2"><a href="#guest-additions-and-their-problems">Guest additions and their problems</a></li>
+<li class="toc-entry toc-h2"><a href="#enter-mplugd">Enter mplugd</a></li>
+<li class="toc-entry toc-h2"><a href="#installation-and-configuration">Installation and configuration</a></li>
+</ul><p>Users of <a href="https://www.virtualbox.org/">VirtualBox</a> know that one of its nicest features
+is <em>automatic guest screen resizing</em>. Basically, every time you perform
+an action that causes the VM window to change its size (i.e. switch it
+between fullscreen and windowed mode, or change its size by dragging a
+border) the guest will receive an event that will cause it to change the
+screen resolution to match the effective window size. This means that,
+when fullscreen mode is entered or exited, you don’t have to open the
+guest’s screen settings and change the resolution manually. Proper
+useful!</p>
+
+<h2 id="guest-additions-and-their-problems">
+<a class="anchor" href="#guest-additions-and-their-problems" aria-hidden="true"><span class="octicon octicon-link"></span></a>Guest additions and their problems</h2>
+
+<p>This feature works by means of the <em>guest additions</em>, extra software
+that needs to be installed inside the guest and that provides tighter
+integration with the hypervisor.</p>
+
+<p>Since VirtualBox 6.0, it is possible to choose the type of emulated
+graphics adapter:</p>
+
+<ul>
+  <li>
+<code class="language-plaintext highlighter-rouge">VBoxVGA</code> is a legacy adapter that is recommended for older OSes;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">VBoxSVGA</code> is recommended for modern Windows systems;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">VMSVGA</code> is recommended for modern Linux systems.</li>
+</ul>
+
+<p>Now, this is the theory. It looks like that any recent Linux system
+should go with <code class="language-plaintext highlighter-rouge">VMSVGA</code>. However, I have encountered a number of issues
+with that adapter, including:</p>
+
+<ul>
+  <li>automatic screen resizing not working even when the guest additions
+are installed and exactly matching the version of the running
+hypervisor, if the additions come from prepackaged binaries of my
+distro. I needed to manually install them using the VirtualBox ISO to
+get them working;</li>
+  <li>even after fixing the point above, I got poor 2D performance in
+everyday desktop activity, such as very slow window dragging, portions
+of the screen showing as solid black and, more importantly, frequent
+VM crashes.</li>
+</ul>
+
+<p>However, if I ignore the recommendation and keep using the legacy
+<code class="language-plaintext highlighter-rouge">VBoxVGA</code> adapter, things get better, much better. No crashes, black
+areas and windows can be dragged at a decent speed. But there is a price
+to pay: automatic screen resizing no longer works with Linux guests if
+they are not using the <code class="language-plaintext highlighter-rouge">VMSVGA</code> adapter. So you can basically choose
+between an unstable VM with working autoresize or a stable one without
+it.</p>
+
+<p>Luckily, we are <em>not</em> forced to use <code class="language-plaintext highlighter-rouge">VMSVGA</code> to have working
+screen resizing.</p>
+
+<h2 id="enter-mplugd">
+<a class="anchor" href="#enter-mplugd" aria-hidden="true"><span class="octicon octicon-link"></span></a>Enter <code class="language-plaintext highlighter-rouge">mplugd</code>
+</h2>
+
+<p>Under a Linux VirtualBox machine with the guest additions installed,
+every time we resize the guest window, the system can immediately detect
+the new resolution. We can see that by calling <code class="language-plaintext highlighter-rouge">xrandr</code> after poking
+with the window size. The system alone, however, will not take any
+action when that happens. It is a VirtualBox additional component,
+<code class="language-plaintext highlighter-rouge">VBoxClient</code>, which listens for window size changes and adapts the
+screen to follow. As said above, this only works if using the <code class="language-plaintext highlighter-rouge">VMSVGA</code>
+adapter.</p>
+
+<p>However, since the window size can be read by any system tool, couldn’t
+we use a different tool to listen for resolution changes in place of
+<code class="language-plaintext highlighter-rouge">VBoxClient</code> and then call <code class="language-plaintext highlighter-rouge">xrandr</code> to change the screen resolution on
+the guest?</p>
+
+<p>The answer is yes, and such a tool already exists: <a href="https://github.com/anyc/mplugd">mplugd</a>.  It
+a generic event listener based on plugins, which matches events against
+rules to execute when a certain thing happen. You can write rules such
+as “when event X happens, execute script Y”.</p>
+
+<p>Since it already supports X events via a dedicated plugin, it can be put
+into immediate use by telling it to adjust the screen resolution when a
+screen change event happens.</p>
+
+<p><em>Note: <code class="language-plaintext highlighter-rouge">mplugd</code> is written in Python 2, which has been retired at the
+beginning of 2020. Nevertheless, this utility is extremely useful and
+still working, so until it is ported to Python 3 or something better
+comes out, it is a good way to work around VirtualBox problems.</em></p>
+
+<p>Let’s see how we can install and configure it. The following sections
+show how to do it on an <a href="https://www.archlinux.org/">Arch Linux</a> system, but the general
+principles hold for any distribution.</p>
+
+<h2 id="installation-and-configuration">
+<a class="anchor" href="#installation-and-configuration" aria-hidden="true"><span class="octicon octicon-link"></span></a>Installation and configuration</h2>
+
+<p>Under Arch Linux, <code class="language-plaintext highlighter-rouge">mplugd</code> is available via the AUR, so you can use your
+favourite helper to install it, or do it manually. To handle X events, it
+needs <code class="language-plaintext highlighter-rouge">python2-xlib</code>, which must be installed separately.
+<code class="language-plaintext highlighter-rouge">python2-setuptools</code> are also needed:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>pacman -Syu python2-setuptools
+yay -Su mplugd-git python2-xlib 
+</code></pre></div></div>
+
+<p>Once installed, rule definitions can be placed globally under
+<code class="language-plaintext highlighter-rouge">/etc/mplugd/action.d</code> or locally under <code class="language-plaintext highlighter-rouge">$HOME/.mplugd/action.d</code>. Since
+we want screen resizing to work for every user, we go for the first
+location.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Edit /etc/mplugd/action.d/vboxresizing.rules
+[rule vboxresizing]
+on_type=OutputChangeNotify
+true_exec=xrandr --output %event_name% --auto
+</code></pre></div></div>
+
+<p>We are asking <code class="language-plaintext highlighter-rouge">mplugd</code> to invoke <code class="language-plaintext highlighter-rouge">xrandr</code> every time a video output
+changes. The name of the output to be acted upon (i.e. <code class="language-plaintext highlighter-rouge">VGA-1</code>) is
+derived from the event and made available for substitution as
+<code class="language-plaintext highlighter-rouge">%event_name%</code>.</p>
+
+<p>Last, we must ensure that <code class="language-plaintext highlighter-rouge">mplugd</code> is started every time a user logs
+in. Since the package doesn’t come with a <code class="language-plaintext highlighter-rouge">systemd</code> unit, we will put a
+global desktop entry for it under <code class="language-plaintext highlighter-rouge">/etc/xdg/autostart/</code>, so that every
+user gets it for free:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Edit /etc/xdg/autostart/mplugd.desktop
+[Desktop Entry]
+Name=mplugd
+NoDisplay=True
+Exec=/usr/bin/mplugd
+</code></pre></div></div>
+
+<p>Starting from the next login, the guest screen should automatically
+resize, even when using the <code class="language-plaintext highlighter-rouge">VBoxVGA</code> adapter.</p>
+
+<!-- Links --------------------------------------------------------- -->
+
+
+  </div>
+
+  <script src="https://utteranc.es/client.js"
+     repo="binary-manu/binary-is-better"
+     issue-term="pathname"
+     label="comment"
+     theme="preferred-color-scheme"
+     crossorigin="anonymous"
+     async>
+  </script>
+
+  <a class="u-url" href="/binary-is-better/virtualbox/resize-vbox-screen-with-mplugd" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/binary-is-better/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Binary is better</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Emanuele Giacomelli</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <a rel="license" href="http://creativecommons.org/licenses/by/3.0/">
+          <img alt="Creative Commons License" style="border-width:0"
+            src="https://i.creativecommons.org/l/by/3.0/88x31.png">
+        </a><ul class="social-media-list"></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Personal notes about my software developer things</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

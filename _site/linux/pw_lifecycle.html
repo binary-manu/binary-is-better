@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Linux account and password lifecycle | Binary is better</title>
+<meta name="generator" content="Jekyll v4.3.1" />
+<meta property="og:title" content="Linux account and password lifecycle" />
+<meta name="author" content="Emanuele Giacomelli" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="User account creation and maintenance is a typical routine task for *NIX system administrators. Yet, this topic can sometimes be confusing because account information is scattered across a number of files, and each file stores multiple information fields whose meaning and relations to one another may not be so obvious, especially when it comes to the lifecycle of the account and its related password. Let’s have a look at the most important files that store account information and, in particular, the meaning of information that impact the lifecycle of passwords and accounts." />
+<meta property="og:description" content="User account creation and maintenance is a typical routine task for *NIX system administrators. Yet, this topic can sometimes be confusing because account information is scattered across a number of files, and each file stores multiple information fields whose meaning and relations to one another may not be so obvious, especially when it comes to the lifecycle of the account and its related password. Let’s have a look at the most important files that store account information and, in particular, the meaning of information that impact the lifecycle of passwords and accounts." />
+<link rel="canonical" href="http://localhost:4000/binary-is-better/linux/pw_lifecycle" />
+<meta property="og:url" content="http://localhost:4000/binary-is-better/linux/pw_lifecycle" />
+<meta property="og:site_name" content="Binary is better" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-09-20T00:00:00+02:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Linux account and password lifecycle" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2020-09-20T00:00:00+02:00","datePublished":"2020-09-20T00:00:00+02:00","description":"User account creation and maintenance is a typical routine task for *NIX system administrators. Yet, this topic can sometimes be confusing because account information is scattered across a number of files, and each file stores multiple information fields whose meaning and relations to one another may not be so obvious, especially when it comes to the lifecycle of the account and its related password. Let’s have a look at the most important files that store account information and, in particular, the meaning of information that impact the lifecycle of passwords and accounts.","headline":"Linux account and password lifecycle","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/binary-is-better/linux/pw_lifecycle"},"url":"http://localhost:4000/binary-is-better/linux/pw_lifecycle"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/binary-is-better/feed.xml" title="Binary is better" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/binary-is-better/">Binary is better</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/binary-is-better/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Linux account and password lifecycle</h1>
+    <p class="post-meta">
+      
+      <time class="dt-published" datetime="2020-09-20T00:00:00+02:00" itemprop="datePublished">Published Sep 20, 2020
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <ul id="toc" class="section-nav">
+<li class="toc-entry toc-h2"><a href="#account-data-storage">Account data storage</a>
+<ul>
+<li class="toc-entry toc-h3"><a href="#etcpasswd">/etc/passwd</a></li>
+<li class="toc-entry toc-h3"><a href="#etcshadow">/etc/shadow</a></li>
+<li class="toc-entry toc-h3"><a href="#etcgroup">/etc/group</a></li>
+<li class="toc-entry toc-h3"><a href="#etcgshadow">/etc/gshadow</a></li>
+</ul>
+</li>
+<li class="toc-entry toc-h2"><a href="#lifecycles">Lifecycles</a>
+<ul>
+<li class="toc-entry toc-h3"><a href="#account-lifecycles">Account lifecycles</a></li>
+<li class="toc-entry toc-h3"><a href="#password-lifecycles">Password lifecycles</a>
+<ul>
+<li class="toc-entry toc-h4"><a href="#password-field-states">Password field states</a></li>
+<li class="toc-entry toc-h4"><a href="#password-aging">Password aging</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-entry toc-h2"><a href="#a-note-about-pam">A note about PAM</a></li>
+</ul><p>User account creation and maintenance is a typical routine task for
+*NIX system administrators. Yet, this topic can sometimes be confusing
+because account information is scattered across a number of files, and
+each file stores multiple information fields whose meaning and relations
+to one another may not be so obvious, especially when it comes to the
+lifecycle of the account and its related password. Let’s have a look at
+the most important files that store account information and, in
+particular, the meaning of information that impact the lifecycle of
+passwords and accounts.</p>
+
+<h2 id="account-data-storage">
+<a class="anchor" href="#account-data-storage" aria-hidden="true"><span class="octicon octicon-link"></span></a>Account data storage</h2>
+
+<p>In order to keep track of users on a system, each user gets its own
+<em>account</em>. Each account stores a plethora of information that is used by
+different tools to authenticate users and appropriately setup the
+environment after login.</p>
+
+<p>On Linux, the system stores the following data for each account:</p>
+
+<ul>
+  <li>
+<em>username</em>: the human-readable identifier used to refer to this
+specific user, which is typically typed at login time. For example,
+<code class="language-plaintext highlighter-rouge">johndoe</code>;</li>
+  <li>
+<em>password and password-aging data</em>: each account has a password, which
+may be used for authentication at login time. Depending on how you are
+logging in the password may or may not be required (i.e.  public key
+authentication with SSH does not use it). The password also comes with
+some related data that track its <em>aging</em>: the last time it was
+changed, how much time can elapse before a change is enforced and so
+on;</li>
+  <li>
+<em>user environment information</em>: the home directory of the user and
+their login shell;</li>
+  <li>
+<em>user ID’s</em>, their <em>user ID (UID)</em> and primary <em>group ID (GID)</em>;</li>
+  <li>
+<em>user full name</em>, often called a <em>comment</em>;</li>
+  <li>
+<em>account expiration date</em>, a specific date after which the account can
+no longer be used. As we will see, this information is independent
+from <em>password-aging data</em>, altough they are othen used together in
+security checks;</li>
+  <li>
+<em>supplementary group memberships</em>, the list of groups, in addition to
+the primary one identified by the <em>GID</em>, to which the user belongs;</li>
+  <li>
+<em>group passwords</em>: groups can have passwords, which are used by some
+tools to allow gaining temporary membership if you are not a member
+yet.</li>
+</ul>
+
+<p>As can be guessed from the list, some bits of information are likely to
+be much more sensitive than others. For example, username and comment
+are likely public information, while the password must be protected from
+prying eyes. For these reasons, modern systems use different files to
+store them. Also, group data is handled separately to better cope with
+their one-to-many nature:</p>
+
+<ul>
+  <li>
+<code class="language-plaintext highlighter-rouge">/etc/passwd</code> stores non-sensitive non-group information, such as
+usernames, UID’s, comments and the like. While the file is only
+writable by root for administrative purpouses, anyone can read it, in
+order to get basic information about users. For example to get the
+full, real name of user <em>janedoe</em>, you would look up this file for the
+username and get the comment field.</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">/etc/shadow</code> stores sensitive non-group information, which means that
+all password related stuff go there. Unlike <code class="language-plaintext highlighter-rouge">/etc/passwd</code>, reading
+this file is off-limits for regular users;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">/etc/group</code> stores non-sensitive group information, such as group
+names, GID’s and membership information. While the file is only
+writable by root for administrative purpouses, anyone can read it, in
+order to discover group memberships for a user;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">/etc/gshadow</code> stores sensitive group information: group passwords go
+there.</li>
+</ul>
+
+<h3 id="etcpasswd">
+<a class="anchor" href="#etcpasswd" aria-hidden="true"><span class="octicon octicon-link"></span></a>/etc/passwd</h3>
+
+<p>The structure of <code class="language-plaintext highlighter-rouge">/etc/passwd</code> is simple: every line maps to a different
+account and is composed of exactly 7 fields, separated by a colon (<code class="language-plaintext highlighter-rouge">:</code>).
+This is excerpt from my system:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root:x:0:0:root:/root:/bin/bash
+manu:x:1000:100:Manu:/home/manu:/bin/bash
+[...]
+</code></pre></div></div>
+
+<p>The first line describes the account for the super user, the second one
+maps to my primary user account. The fields are defined as follows:</p>
+
+<ol>
+  <li>the <em>username</em>;</li>
+  <li>the <em>password</em> (more on this below);</li>
+  <li>the numeric <em>User ID (UID)</em> the system uses to internally track this
+user and its resources (processes, files, …);</li>
+  <li>the numeric <em>Group ID (GID)</em> of the primary group this user belongs
+to;</li>
+  <li>the <em>comment field</em>: provides basic information about the user, such
+as its full name or its office location. It is formatted according to
+the <a href="https://en.wikipedia.org/wiki/Gecos_field">GECOS</a> field definition, which is why it is often called
+the GECOS field;</li>
+  <li>the user’s <em>home directory</em>;</li>
+  <li>the user’s <em>login shell</em>, the program that should be invoked to
+handle commands just after the login completes.</li>
+</ol>
+
+<p>There is one important thing to note: we just asserted that this file is
+world-readable and should not contain passwords and other sensitive
+information, yet the second field is called <em>password</em>… what is going
+on?</p>
+
+<p>In early versions of UNIX this file used to also store passwords. For
+security reasons, passwords were not stored as cleartext, but as salted
+hashes, which means that instead of your plain password you would see a
+longer and apparently meaningless sequences of letters, digits and other
+symbols.  Such a sequence is derived from your password using a one-way
+cryptographic function, so that it is very easy to calculate the hash
+given the password, but is (theoretically) very hard to recover the
+password from the hash. This way, the system would ask for your
+cleartext password at login time, calculate the hash, then compare what
+it calculated with the contents of the <em>password</em> field. If they
+matched, login would be allowed.</p>
+
+<p>Conversely, if a malicious user tried to impersonate you, simply knowing
+the hash of your password is useless, because it cannot be directly
+typed at password prompts: the system would treat it as a plain password
+and hash it again, producing a different result.</p>
+
+<p>However, as technology progressed, attacks against this scheme have
+become more sofisticated and feasible. Therefore, it was decided to
+store passwords in a different file, readable only by the superuser.
+Passwords are still stored as hashes, since it offers greater protection
+in case the contents are leaked somehow.</p>
+
+<p>When passwords were moved, the corresponding field was retained in order
+to avoid shifting the others . Nowadays, it is common to see an <code class="language-plaintext highlighter-rouge">x</code>
+inside it, which simply means that the password should be looked up in
+<code class="language-plaintext highlighter-rouge">/etc/shadow</code>.</p>
+
+<h3 id="etcshadow">
+<a class="anchor" href="#etcshadow" aria-hidden="true"><span class="octicon octicon-link"></span></a>/etc/shadow</h3>
+
+<p>This file is were sensitive information are stored. Here is an excerpt
+(the file comes from a Vagrant machine, so the plaintext passwords for
+both <code class="language-plaintext highlighter-rouge">root</code> and <code class="language-plaintext highlighter-rouge">vagrant</code> users are <code class="language-plaintext highlighter-rouge">vagrant</code>, no secret here 🙂):</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>root:$1$m.FEVNiS$OYiaRNHMHzS85/wnDHccI.::0:99999:7:::
+vagrant:$1$gPNBpA.5$5pr.KtXhOx6S/Hc69TUZZ.::0:99999:7:::
+</code></pre></div></div>
+
+<p>Each line contains 9 fields:</p>
+
+<ol>
+  <li>the <em>username</em>;</li>
+  <li>the <em>hashed password</em>;</li>
+  <li>the <em>date of the most recent password change</em>. This field is
+automatically updated every time the password is changed with
+<code class="language-plaintext highlighter-rouge">passwd</code>;</li>
+  <li>the <em>minimum password age</em>, which is the number of days that must
+elapse after a password change before it can be changed again;</li>
+  <li>the <em>maximum password age</em>, which is the number of days after which
+the password must be changed. This value is relative to the contents
+of field #3: summing them together gives you the <em>password expiration
+date</em>;</li>
+  <li>the <em>password warning period</em>, the number of days immediately
+preceding the <em>password expiration date</em> during which the system will
+remind the user that the password is going to expire;</li>
+  <li>the <em>password inactivity period</em>, the number of days immediately
+after the <em>password expiration date</em> during which the password will
+still allow logins, but the system will force a password change
+before giving you the prompt. Failing to change the password will
+abort the login;</li>
+  <li>the <em>account expiration date</em>: past this date, the account is
+considered expired and cannot be used for logging in under any
+circumstance, even if your login method would not rely on the account
+password, as for SSH public key authentication;</li>
+  <li>this field is unused and usually empty.</li>
+</ol>
+
+<p>It is important to note that, while fields #3 and #8 are <em>dates</em>
+(absolute time points, like 01/01/2000), fields #4, #5, #6, #7 are
+expressed as <em>day counts</em> (i.e.  <code class="language-plaintext highlighter-rouge">7</code> means seven days) and as such are
+relative to some other date.</p>
+
+<p>Fields #3 and #8 are expressed as the number of days elapsed since the
+UNIX epoch (midnight of January 1st, 1970 UTC); <code class="language-plaintext highlighter-rouge">0</code> means the Epoch, <code class="language-plaintext highlighter-rouge">1</code>
+means one day past the Epoch (January 2nd) and so on.</p>
+
+<p>To compute this value for the current system time, we may type:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">echo</span> <span class="k">$((</span> <span class="si">$(</span><span class="nb">date</span> +%s<span class="si">)</span> <span class="o">/</span> <span class="o">(</span><span class="m">3600</span> <span class="o">*</span> <span class="m">24</span><span class="o">)</span> <span class="k">))</span>
+</code></pre></div></div>
+
+<p>First, we ask for the current time expressed as seconds elapsed since
+the epoch, then divide by the number of seconds in a day (<code class="language-plaintext highlighter-rouge">24 * 3600</code>).</p>
+
+<p>To view such a date in a more readable form, we can use</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">date</span> <span class="nt">-I</span> <span class="nt">-ud</span> @<span class="k">$((</span> &lt;<span class="nb">date</span><span class="o">&gt;</span> <span class="o">*</span> <span class="m">3600</span> <span class="o">*</span> <span class="m">24</span><span class="k">))</span>
+</code></pre></div></div>
+
+<p>This converts the days back to seconds and then asks <code class="language-plaintext highlighter-rouge">date</code> to spit out
+the equivalent broken down UTC date in ISO 8601 format. Some system
+tools such as <code class="language-plaintext highlighter-rouge">chage</code> and <code class="language-plaintext highlighter-rouge">passwd -S</code> do this conversion for us when
+querying accounts, so this snippet is only useful to convert a value
+that does not already reside in <code class="language-plaintext highlighter-rouge">/etc/shadow</code>.</p>
+
+<h3 id="etcgroup">
+<a class="anchor" href="#etcgroup" aria-hidden="true"><span class="octicon octicon-link"></span></a>/etc/group</h3>
+
+<p>This file tracks group membership, storing the list of members for each
+group:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>manu:x:1006:manu
+wheel:x:10:root,manu
+[…]
+</code></pre></div></div>
+
+<p>Every line defines a single group and is composed of the following 4
+field:</p>
+
+<ol>
+  <li>the <em>group name</em>;</li>
+  <li>the <em>group password</em>;</li>
+  <li>the <em>group ID (GID)</em> of the group;</li>
+  <li>a comma-separated list of usernames of <em>group members</em>.</li>
+</ol>
+
+<p>Just like <code class="language-plaintext highlighter-rouge">/etc/passwd</code>, the <em>group password</em> field is actually unused
+and filled with an <code class="language-plaintext highlighter-rouge">x</code> since the real password, if any, resides in
+<code class="language-plaintext highlighter-rouge">/etc/gshadow</code>.</p>
+
+<h3 id="etcgshadow">
+<a class="anchor" href="#etcgshadow" aria-hidden="true"><span class="octicon octicon-link"></span></a>/etc/gshadow</h3>
+
+<p><code class="language-plaintext highlighter-rouge">/etc/gshadow</code> contains almost the same information as <code class="language-plaintext highlighter-rouge">/etc/group</code> with
+two major differences:</p>
+
+<ul>
+  <li>passwords are actually present as salted hashes;</li>
+  <li>it adds a list of administrator members. We’ll see this in a moment.</li>
+</ul>
+
+<p>The contents would look like this:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wheel:::root,manu
+manu:::manu
+[…]
+</code></pre></div></div>
+
+<p>Each line is again composed of 4 fields:</p>
+
+<ol>
+  <li>the <em>group name</em>;</li>
+  <li>the <em>group password</em>;</li>
+  <li>a comma-separated list of usernames of <em>group administrators</em>;</li>
+  <li>a comma-separated list of usernames of <em>group members</em>.</li>
+</ol>
+
+<p>This time, field #2 contains the real hashed password, if any. Field #4
+should always be synced with field #4 of <code class="language-plaintext highlighter-rouge">/etc/group</code> and list all
+members.</p>
+
+<p>Filed #3 is new: it defines group administrators. These users are group
+members which have the ability to add or remove other members from the
+group or change the group password, without being root and without
+knowing the password.</p>
+
+<p>Group passwords are used by some tools (for instance, <code class="language-plaintext highlighter-rouge">newgrp</code>) to gain
+temporary membership of the group without being listed in <code class="language-plaintext highlighter-rouge">/etc/group</code>
+or <code class="language-plaintext highlighter-rouge">/etc/gshadow</code> as a member. What <code class="language-plaintext highlighter-rouge">newgrp</code> does is spawning a new
+shell whose real and effetive group ID’s (RGID and EGID) are set to the
+chosen group rather than to the primary group of the user as listed in
+<code class="language-plaintext highlighter-rouge">/etc/passwd</code>.  If the calling user is alredy a member of the chosen
+group, no password is asked. If it is not, the group password must be
+entered. A passwordless group cannot be entered via <code class="language-plaintext highlighter-rouge">newgrp</code>.</p>
+
+<p>As an example, let’s see how the RGID and EGID of the current shell
+change after a call to <code class="language-plaintext highlighter-rouge">newgrp</code>:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># I just logged in so my group ID's are set to my primary group</span>
+<span class="nv">$ </span>ps <span class="nt">-o</span> pid,ppid,euid,ruid,egid,rgid <span class="nt">-p</span> <span class="nv">$$</span>
+    PID    PPID  EUID  RUID  EGID  RGID
+  19905   13862  1000  1000   100   100
+<span class="c"># Now let's enter a group I'm a member of</span>
+<span class="nv">$ </span>newgrp audio
+<span class="c"># The group ID's are now different. Also, the shell has a different</span>
+<span class="c"># PID since it's a new process, and the old shell is its parent.</span>
+<span class="nv">$ </span>ps <span class="nt">-o</span> pid,ppid,euid,ruid,egid,rgid <span class="nt">-p</span> <span class="nv">$$</span>
+    PID    PPID  EUID  RUID  EGID  RGID
+  24111   19905  1000  1000    92    92
+</code></pre></div></div>
+
+<p>Note that group passwords have no aging information and as such cannot
+expire. Since they are rarely used, this is not a concern.</p>
+
+<h2 id="lifecycles">
+<a class="anchor" href="#lifecycles" aria-hidden="true"><span class="octicon octicon-link"></span></a>Lifecycles</h2>
+
+<p>The next thing we must discuss are the lifecycles of passwords and
+accounts; that is, the time frames during which they are usable to
+login.</p>
+
+<p>Both the password and the account have their own lifecycles, and the two
+are not necessarily identical. This means we may have an active account
+with an expired password or, conversely, an expired account whose
+password would still be valid given its aging information. Of course,
+since the two concepts are strongly related, there must be some kind of
+relationship between the two, whose ultimate goal is to determine if we
+can login with that account or not.</p>
+
+<h3 id="account-lifecycles">
+<a class="anchor" href="#account-lifecycles" aria-hidden="true"><span class="octicon octicon-link"></span></a>Account lifecycles</h3>
+
+<p>Let’s talk about the account lifecycle first. Each account can be in
+just one of two states: it can be either <em>active</em> or <em>expired</em>. An
+active account can be used to log into the system, provided the
+authentication method we are going to use is usable and that we pass the
+authentication challenge. Conversely, an expired account cannot be used
+for logging in, irrespective of how we would authenticate ourselves. No
+matter if we try to log in using the account password, an SSH private
+key or some other method. If the account is expired, it is not good for
+that.</p>
+
+<p>There is a single parameter which controls the expiration of an account:
+the <em>account expiration date</em> stored in <code class="language-plaintext highlighter-rouge">/etc/shadow</code> in the 8th field.
+If the system time is before this date, the account is active, otherwise
+it’s expired. It’s that simple.</p>
+
+<p>Account expiration is optional: if a date is not provided, the
+corresponding field will be empty and the account will never expire.
+This is the usual condition for accounts. It makes sense to set an
+expiration date for accounts which are bound to be terminated unless
+some manual process is enacted.  For example, an external contractor may
+have its account bound to expire when its contract expires.</p>
+
+<p>The expiration date can only be changed by the administrator. Updating
+it to represent some point in the future effectively extends the
+lifetime of an account. If it was expired, it will be active again.
+Conversely, settings it to a value in the past (i.e. <code class="language-plaintext highlighter-rouge">1</code>) will
+immediately expire the account.</p>
+
+<p><code class="language-plaintext highlighter-rouge">usermod -e</code> can set the expiration date of an account:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Set account 'test' to expire at the end of 2020.</span>
+<span class="c"># The date is in ISO 8601 format, but other variations are</span>
+<span class="c"># accepted (i.e. 'today' and 'tomorrow' work).</span>
+usermod <span class="nt">-e</span> 2020-12-31 <span class="nb">test</span>
+</code></pre></div></div>
+
+<h3 id="password-lifecycles">
+<a class="anchor" href="#password-lifecycles" aria-hidden="true"><span class="octicon octicon-link"></span></a>Password lifecycles</h3>
+
+<p>Password lifecycles are more complex. First, a password can be
+in one of several states, which impact the availability of the password
+for login purpouses. Second, a password will go through multiple
+state changes during its lifetime, for example it may be usable,
+then expire, then be usable again after the user has changed it, then
+expire again, and so on.  Of course, if the corresponding account is expired,
+we already now we won’t be able to login.</p>
+
+<p>Password state is determined by multiple attributes, but ultimately we
+can split them in two logical groups:</p>
+
+<ul>
+  <li>the <em>password age</em>, as defined by <code class="language-plaintext highlighter-rouge">/etc/shadow</code> fields #3 to #7: age
+is used to enforce a change when a password has been in use for too
+long and can make it expire after a set amount of time;</li>
+  <li>the <em>passowrd field</em> as stored in <code class="language-plaintext highlighter-rouge">/etc/shadow</code>, field #2. Normally,
+it will consist of the output of a password hashing algorithm, but it
+can also be set to special values (more below) which can inhibit its
+usability.</li>
+</ul>
+
+<p>Both groups contribute to deciding if the password can be used to login.
+If aging data says that the password is expired, for example, we will
+not be able to use it regardless of its value. But even if the password
+is OK according to aging information, we may still be unable to use it:
+for example, it may be locked.</p>
+
+<h4 id="password-field-states">
+<a class="anchor" href="#password-field-states" aria-hidden="true"><span class="octicon octicon-link"></span></a>Password field states</h4>
+
+<p>At any given time, the <em>password field</em> may be in one of 4 forms:</p>
+
+<ul>
+  <li>it can be <em>empty</em>;</li>
+  <li>it can be <em>usable</em>;</li>
+  <li>it can be <em>locked</em>;</li>
+  <li>it can be <em>unusable</em>.</li>
+</ul>
+
+<p>First, an account can have an empty password. While this is clearly not
+optimal from the point of view of system security, it can be allowed,
+depending on the system configuration. It is easy to spot such accounts
+because the <em>password field</em> will be empty.  In such cases, when logging
+in the system will not even ask for a password, we will get to the shell
+as soon as we enter the username.  This is what we would see in
+<code class="language-plaintext highlighter-rouge">/etc/shadow</code>:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>test::18518::::::
+</code></pre></div></div>
+
+<p>We can use <code class="language-plaintext highlighter-rouge">passwd -S $USERNAME</code> to ask the system for the status of the
+password for a specific user. In this case, we get:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>test NP 2020-09-13 -1 -1 -1 -1 (Empty password.)
+</code></pre></div></div>
+
+<p>Remember that some tools or libraries may be configured to reject
+accounts with empty passwords. For example, SSH can be configured to
+disallow logins if an account has no password (<code class="language-plaintext highlighter-rouge">PermitEmptyPasswords</code>
+option). The Linux-PAM <code class="language-plaintext highlighter-rouge">pam_unix.so</code> module has a similar option
+(<code class="language-plaintext highlighter-rouge">nullok</code>). If you really want to use passwordless accounts…</p>
+
+<div style="margin: 0 0 1em 0;">
+<div class="tenor-gif-embed" data-postid="13199396" data-share-method="host" data-width="30%" data-aspect-ratio="1.78494623655914">
+  <a href="https://tenor.com/view/why-huh-but-why-gif-13199396">Why Huh
+    GIF</a> from <a href="https://tenor.com/search/why-gifs">Why
+    GIFs
+  </a>
+</div>
+<script type="text/javascript" async="" src="https://tenor.com/embed.js"></script>
+</div>
+
+<p>…be sure to check that services using them work as intended.</p>
+
+<p>Then, an account may have a usable, valid password. This is the usual
+condition for user accounts. The <em>password field</em> will store the hashed
+password. The exact representation of the hash depends on the hashing
+method. <code class="language-plaintext highlighter-rouge">/etc/shadow</code> contains, for example:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>test:$1$ixE/9ivM$.BgDclGsEvrE/Uqd8TS9C1:18518::::::
+</code></pre></div></div>
+
+<p>and <code class="language-plaintext highlighter-rouge">passwd -S</code> reports:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>test PS 2020-09-13 -1 -1 -1 -1 (Password set, MD5 crypt.)
+</code></pre></div></div>
+
+<p>The password was hashed with the <code class="language-plaintext highlighter-rouge">md5crypt</code> algorithm, as indicated by
+the password starting with <code class="language-plaintext highlighter-rouge">$1$</code>. We can login with the <code class="language-plaintext highlighter-rouge">test</code> user by
+typing the plaintext password.</p>
+
+<p>Passwords can be locked. What this means is that the password is marked
+as unacceptable for login, while it original value is preserved.  This
+way, when it gets unlocked, it will hold the same value it had before.</p>
+
+<p>Password locking and unlocking can be performed using <code class="language-plaintext highlighter-rouge">passwd -l</code> and
+<code class="language-plaintext highlighter-rouge">passwd -u</code>. What these tools actually do to mark the password as locked
+is to add an exclamation mark (<code class="language-plaintext highlighter-rouge">!</code>) at the beginning of the <em>password
+field</em>.  The rest of the field contains the original hash.  Predictably,
+unlocking merely removes the leading <code class="language-plaintext highlighter-rouge">!</code>.</p>
+
+<p>Adding the <code class="language-plaintext highlighter-rouge">!</code> at the beginning is simply a convention. What actually
+makes the password locked is that no valid password hashing algorithm
+will ever produce something starting with <code class="language-plaintext highlighter-rouge">!</code>. Therefore, no matter what
+you type at login prompts, including the correct password, the
+calculated hash will never match the <em>password field</em>. Any other way of
+producing an impossible hash from which the original can be recovered
+would work, but the use of <code class="language-plaintext highlighter-rouge">!</code> is historical, simple and effective.</p>
+
+<p>This is how a locked password looks like:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>test:!$1$ixE/9ivM$.BgDclGsEvrE/Uqd8TS9C1:18518::::::
+</code></pre></div></div>
+
+<p>and <code class="language-plaintext highlighter-rouge">passwd -S</code> reports:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>test LK 2020-09-13 -1 -1 -1 -1 (Password locked.)
+</code></pre></div></div>
+
+<p>Remember that locking applies to the <em>password</em>, not to the account.
+Depending on your system configuration and the tools handling the login,
+you may still be able to login with the associated account.</p>
+
+<p>Finally, we can give an account an unusable password: in this case,the
+<em>password field</em> will contain an impossible hash, just like a locked
+password. The only difference is that such field will not follow the
+convention for locked passwords: the system will report it as present,
+not as locked.  However, any attempt to use it will fail.  A common use
+for this is for accounts which use alternate authentication schemes
+exclusively, like SSH keys.  If we already know an account will only be
+used by an automated remote system to connect and that it will use an
+RSA key, there is no point in also setting a password, which may be used
+by an attacker to compromise the system.</p>
+
+<p>A very common way of setting an unusable password is to set the
+<em>password field</em> to a single asterisk (<code class="language-plaintext highlighter-rouge">*</code>):</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>test:*:18518::::::
+</code></pre></div></div>
+
+<p>and <code class="language-plaintext highlighter-rouge">passwd -S</code> reports:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>test LK 2020-09-13 -1 -1 -1 -1 (Alternate authentication scheme in use.)
+</code></pre></div></div>
+
+<p>This convention is widespread enough that <code class="language-plaintext highlighter-rouge">passwd -S</code> recognizes it as a
+special convention and reports that an alternate authentication scheme
+will be used to login.</p>
+
+<p>The advantage of this scheme with respect to locked passwords is that it
+does not look like it’s locked. This may be useful if some login program
+insists on your account having as unlocked password even if it is not
+going to use it. An unusable password looks valid, but no one will ever
+be able to use it, attackers included.</p>
+
+<h4 id="password-aging">
+<a class="anchor" href="#password-aging" aria-hidden="true"><span class="octicon octicon-link"></span></a>Password aging</h4>
+
+<p>Password aging information track the last time the password was changed,
+and can be used to enforce some limits or mandatory behaviours about
+password maintenance over time.</p>
+
+<p>Since various fields are involved in defining password aging, the
+following picture tries to summarize them. Account expiration is also
+included.</p>
+
+<p><img src="/binary-is-better/assets/my/img/pw_aging.png" alt="Password aging information on a timeline"></p>
+
+<p>The system tracks the date of the most recent password change.  Various
+time frames are then defined as offsets from this moment, given as day
+counts.</p>
+
+<p>First, it is possible to define an optional <em>minimum password age</em>. This
+field gives the number of days immediately after a change during which a
+new change cannot happen. For example, after a user changes its
+password, it may be forced to keep it for 7 days before it can be
+changed again.  Often, this feature is not used and passwords can be
+changed at will at any moment.</p>
+
+<p>Symmetrically, the is also a <em>maximum password age</em>. This is a number of
+days that, when summed with the latest password change date, gives us
+the <em>password expiration date</em>. After this date, the password will be
+expired.  The exact behaviour of trying to login with an expired
+password depends on both this field and on the <em>password inactivity
+period</em>, so we’ll talk about this in a moment.  This field is also
+optional and not setting it means that the password will never expire
+and thus will never need to be changed (altough the user is still free
+to change it).</p>
+
+<p>For user convenience, it is possible to define a <em>password warning
+period</em>. This is the number of days immediately preceding the password
+expiration date during which the system will warn users logging in that
+the password should be changed. For example, this is what a CentOS 7
+system would show:</p>
+
+<p><img src="/binary-is-better/assets/my/img/pw_warning.png" alt="Password expiration warning message"></p>
+
+<p>Again, this field is optional and if not specified, or set to 0, there
+will be no warning.</p>
+
+<p>Things get more interesting when considering the <em>password inactivity
+period</em>, because it defined what happens when a password that has
+exceeded its expiration date is used to login. Basically, depending on
+how we set it, 3 different behaviours can be obtained:</p>
+
+<ul>
+  <li>
+<em>forced change</em>: the expired password is still accepted, but before
+the login can complete the system will force the user to set a new
+password. There is no time limit during which the password must be
+changed, so there is no problem if a login happens months or years
+after the password has expired. We just need to change it and we are
+good to go. This is what happens if the <em>password inactivity period</em>
+is not set;</li>
+  <li>
+<em>time-limited forced change</em>: this case is just like the previous
+bullet, but there is a time limit during which we can change the
+password: we must do it before <em>password inactivity period</em> days has
+elapsed since the password expiration date. After that period, the old
+password will no longer be accepted and it will not be possible to
+change it at login time. The only way to set a new password is to
+contact the administrator. This is the behavior we get by setting the
+inactivity period to a positive value;</li>
+  <li>
+<em>forbidden login</em>: the old password is no longer accepted as soon as
+it expires, there is no forced-change period. Therefore, you must take
+care to not let it reach its expiration date. This is the behaviour
+caused by a zero inactivity period.</li>
+</ul>
+
+<p>Always remember that, with the exception of the date of last change, all
+other fields are relative. So, everytime the password is changed and the
+date of last change is updated, the various time frames start all over
+again.</p>
+
+<h2 id="a-note-about-pam">
+<a class="anchor" href="#a-note-about-pam" aria-hidden="true"><span class="octicon octicon-link"></span></a>A note about PAM</h2>
+
+<p>On the system, various applications need to verify the identity of a
+user and the validiity of its associated account. The <code class="language-plaintext highlighter-rouge">login</code> program
+that lets us grab a virtual terminal is just one of them. <code class="language-plaintext highlighter-rouge">ssh</code>, <code class="language-plaintext highlighter-rouge">su</code>,
+<code class="language-plaintext highlighter-rouge">sudo</code> all need to do the same thing.</p>
+
+<p>Instead of coding password and account verification functionalities
+inside every single app, the modern approach is to delegate such checks
+to a single external component, which does its own checking and returns
+a green light/red light status to the application. On Linux, this goal
+is fullfilled by <a href="http://www.linux-pam.org%20%5Bpam_unix%5D:"><em>Linux-PAM (Pluggable Authentication Modules)</em></a>.</p>
+
+<p>PAM is composed of a core library which exposes an API to authenticating
+applications, and a series of modules that implement specific checks.
+The advantages of such a system are manyfold:</p>
+
+<ul>
+  <li>since PAM is a shared library used by many programs, updating it or
+its modules brings updates and fixes to all clients;</li>
+  <li>the most various authentication schemes can be concocted as long as
+they can be used via the PAM API. Clients are oblivious of how checks
+are done, they simply want to know if it is OK to proceed;</li>
+  <li>PAM is driven by configuration files. Changing these files impacts
+which checks, and in which order, are performed on a client-by-client
+basis. It is possible to have different checks in place for console
+logins with respect to <code class="language-plaintext highlighter-rouge">ssh</code> logins.</li>
+</ul>
+
+<p>Since PAM is a large topic, I will not add much details here. I just
+want to introduce the [<code class="language-plaintext highlighter-rouge">pam_unix.so</code>][pam_unix] module, because it the
+one responsible for checks related to the contents of <code class="language-plaintext highlighter-rouge">/etc/passwd</code>,
+<code class="language-plaintext highlighter-rouge">/etc/shadow</code> and the other files we mentioned.</p>
+
+<p><code class="language-plaintext highlighter-rouge">pam_unix.so</code> is usually included among standard system login checks.
+Depending on your PAM configuration, it may or may not allow empty
+passwords. Its account-related checks verify that both the password and
+the account are not expired: this is the reason why it is important to
+have a non-expired password even if you plan to never use it.</p>
+
+<p>A typical example is an account the is only accessed via <code class="language-plaintext highlighter-rouge">ssh</code> and
+public key authentication. The password in <code class="language-plaintext highlighter-rouge">/etc/shadow</code> is not used in
+this kind of authentication. However, <code class="language-plaintext highlighter-rouge">ssh</code> do asks PAM to perform
+account validity checks, and the password age (but not its value) is
+included. If the password is expired, PAM would return an error,
+preventing <code class="language-plaintext highlighter-rouge">ssh</code> from logging in.</p>
+
+<p>In this case, it is better to configure the password to never expire,
+then set it to an unusable digest such as <code class="language-plaintext highlighter-rouge">*</code>. As explained before, such
+a digest will never match the output of <code class="language-plaintext highlighter-rouge">crypt</code> so it is impossible to
+pass password validation. A the same time, this satisfies other checks
+as the password is formally not empty and not locked.</p>
+
+<!-- Links -->
+
+<p>http://linux-pam.org/Linux-PAM-html/sag-pam_unix.html</p>
+
+
+  </div>
+
+  <script src="https://utteranc.es/client.js"
+     repo="binary-manu/binary-is-better"
+     issue-term="pathname"
+     label="comment"
+     theme="preferred-color-scheme"
+     crossorigin="anonymous"
+     async>
+  </script>
+
+  <a class="u-url" href="/binary-is-better/linux/pw_lifecycle" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/binary-is-better/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Binary is better</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Emanuele Giacomelli</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <a rel="license" href="http://creativecommons.org/licenses/by/3.0/">
+          <img alt="Creative Commons License" style="border-width:0"
+            src="https://i.creativecommons.org/l/by/3.0/88x31.png">
+        </a><ul class="social-media-list"></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Personal notes about my software developer things</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
