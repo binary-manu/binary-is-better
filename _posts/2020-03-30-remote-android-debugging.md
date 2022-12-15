@@ -223,4 +223,4 @@ acceleration.
 
 [socat]: http://www.dest-unreach.org/socat/
 [doorpointer]: https://sourceforge.net/projects/doorpointer/
-[doorpointer-tray-icon]: {{ site.baseurl }}/assets/img/doorpointer.png
+[doorpointer-tray-icon]: {{ "/assets/my/img/doorpointer.png" | relative_url }}

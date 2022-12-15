@@ -493,7 +493,7 @@ removing MOKs from the system. The following short video shows how to
 enroll the keys. A textual description of the steps follow.
 
 <video controls width="640" height="480">
-  <source src='{{ "/assets/mov/mokmanager.webm" | relative_url }}'>
+  <source src='{{ "/assets/my/mov/mokmanager.webm" | relative_url }}'>
 </video>
 
 shim noticed that some MOKs are scheduled for addition and launched
@@ -729,8 +729,7 @@ Boot.
 [gpu-brick]: https://www.reddit.com/r/archlinux/comments/pec41w/secure_boot_selfsigned_keys_nvidia_gpu_bricked/
 [shim]: https://github.com/rhboot/shim
 [sbat]: https://github.com/rhboot/shim/blob/main/SBAT.md
-[vbox-sb]: {{ "/assets/img/vbox_sb.png" | relative_url }}
-[mokmanager-video]: {{ "/assets/mov/mokmanager.webm" | relative_url }}
+[vbox-sb]: {{ "/assets/my/img/vbox_sb.png" | relative_url }}
 [rodsuefi]: http://www.rodsbooks.com/efi-bootloaders/index.html
 [archwiki-uefi]: https://wiki.archlinux.org/title/Unified_Extensible_Firmware_Interface/Secure_Boot
 [nsa-uefi]: https://media.defense.gov/2019/Jul/16/2002158058/-1/-1/0/CSI-BOOT-SECURITY-MODES-AND-RECOMMENDATIONS.PDF

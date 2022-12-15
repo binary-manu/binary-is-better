@@ -608,9 +608,9 @@ as the password is formally not empty and not locked.
 [passwd]: https://linux.die.net/man/5/passwd
 [shadow]: https://linux.die.net/man/5/shadow
 [gecos]: https://en.wikipedia.org/wiki/Gecos_field
-[pw_aging]: {{ site.baseurl }}/assets/img/pw_aging.png
-[pw_warning]: {{ site.baseurl }}/assets/img/pw_warning.png
-[pam]: http://www.linux-pam.org
-[pam_unix]: http://linux-pam.org/Linux-PAM-html/sag-pam_unix.html
+[pw_aging]: {{ "/assets/my/img/pw_aging.png" | relative_url }}
+[pw_warning]: {{ "/assets/my/img/pw_warning.png" | relative_url }}
+[pam]: http://www.linux-pam.org [pam_unix]:
+http://linux-pam.org/Linux-PAM-html/sag-pam_unix.html
 
 
