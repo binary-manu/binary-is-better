@@ -6,6 +6,7 @@ url: "https://binary-manu.github.io"
 theme: minima
 plugins:
     - jekyll-feed
+    - jekyll-toc
 collections:
     posts:
         output: true
@@ -16,13 +17,18 @@ defaults:
           type: posts
       values:
           layout: post
+          toc: true
     - scope:
           path: ""
           type: drafts
       values:
           layout: post
+          toc: true
 exclude:
     - Gemfile
     - Gemfile.lock
     - vendor/
     - rsrc/
+toc:
+    min_level: 2
+    max_level: 4
