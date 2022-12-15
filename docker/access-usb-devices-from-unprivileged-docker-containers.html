@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Access USB devices from unprivileged Docker containers | Binary is better</title>
+<meta name="generator" content="Jekyll v4.3.1" />
+<meta property="og:title" content="Access USB devices from unprivileged Docker containers" />
+<meta name="author" content="Emanuele Giacomelli" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Sometimes, a containerized application may need to access devices from the host. For example, we might be testing serial console tools inside a container, and need to pass the device node for our serial port to the container, for example /dev/ttyUSB0." />
+<meta property="og:description" content="Sometimes, a containerized application may need to access devices from the host. For example, we might be testing serial console tools inside a container, and need to pass the device node for our serial port to the container, for example /dev/ttyUSB0." />
+<link rel="canonical" href="http://localhost:4000/binary-is-better/docker/access-usb-devices-from-unprivileged-docker-containers" />
+<meta property="og:url" content="http://localhost:4000/binary-is-better/docker/access-usb-devices-from-unprivileged-docker-containers" />
+<meta property="og:site_name" content="Binary is better" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-02-12T00:00:00+01:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Access USB devices from unprivileged Docker containers" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2020-02-12T00:00:00+01:00","datePublished":"2020-02-12T00:00:00+01:00","description":"Sometimes, a containerized application may need to access devices from the host. For example, we might be testing serial console tools inside a container, and need to pass the device node for our serial port to the container, for example /dev/ttyUSB0.","headline":"Access USB devices from unprivileged Docker containers","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/binary-is-better/docker/access-usb-devices-from-unprivileged-docker-containers"},"url":"http://localhost:4000/binary-is-better/docker/access-usb-devices-from-unprivileged-docker-containers"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/binary-is-better/feed.xml" title="Binary is better" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/binary-is-better/">Binary is better</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/binary-is-better/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Access USB devices from unprivileged Docker containers</h1>
+    <p class="post-meta">
+      
+      <time class="dt-published" datetime="2020-02-12T00:00:00+01:00" itemprop="datePublished">Published Feb 12, 2020
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <ul id="toc" class="section-nav">
+<li class="toc-entry toc-h2"><a href="#single-device-or-multiple-devices">Single device or multiple devices</a></li>
+<li class="toc-entry toc-h2"><a href="#control-groups-cgroups">Control groups (cgroups)</a></li>
+<li class="toc-entry toc-h2"><a href="#recap">Recap</a></li>
+</ul><p>Sometimes, a containerized application may need to access devices from
+the host. For example, we might be testing serial console tools inside a
+container, and need to pass the device node for our serial port to the
+container, for example <code class="language-plaintext highlighter-rouge">/dev/ttyUSB0</code>.</p>
+
+<h2 id="single-device-or-multiple-devices">
+<a class="anchor" href="#single-device-or-multiple-devices" aria-hidden="true"><span class="octicon octicon-link"></span></a>Single device or multiple devices</h2>
+
+<p>When using Docker, we can request a single device to be made available
+within the container by using the <code class="language-plaintext highlighter-rouge">--device</code> options of the <code class="language-plaintext highlighter-rouge">run</code>
+command. This way that device node, and only that, is passed to the
+container and made accessible.</p>
+
+<p>In some cases, passing single device nodes may be unsuitable. A typical
+case is allowing a tool to access devices which can appear and disappear
+and thus change name. Let’s say, in our previous example, that I start
+with a serial converter mapped to <code class="language-plaintext highlighter-rouge">/dev/ttyUSB0</code>, then it gets
+unplugged, a different serial device is plugged in and the original
+device is reattached. At this point the once-<code class="language-plaintext highlighter-rouge">ttyUSB0</code> has become
+<code class="language-plaintext highlighter-rouge">/dev/ttyUSB1</code>, which is not available to the container.</p>
+
+<p>A potential solution is to deploy a udev rule that gives the device node
+a fixed name, based on some attribute of the device (such as its vendor
+id or product id).</p>
+
+<p>There is a case, however, which cannot be easily covered by udev rules:
+USB devices. The kernel provides devices nodes for USB peripherals under
+<code class="language-plaintext highlighter-rouge">/dev/bus/usb</code>. Each time a device is removed and attached, a new device
+node is created, but its name is always changing.</p>
+
+<p>For example, this is my <code class="language-plaintext highlighter-rouge">/dev/bus/usb</code> right now:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/dev/bus/usb
+├── 001
+│   ├── 001
+│   ├── 002
+│   └── 003
+[skip]
+├── 005
+│   ├── 001
+│   ├── 002
+│   ├── 003
+│   ├── 004
+│   └── 005
+[skip]
+</code></pre></div></div>
+
+<p>Now, let’s take a snapshot of that directory again after I have attached
+and reattached my USB mouse dongle:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/dev/bus/usb
+├── 001
+│   ├── 001
+│   ├── 002
+│   └── 003
+[skip]
+├── 005
+│   ├── 001
+│   ├── 002
+│   ├── 003
+│   ├── 005
+│   └── 006
+[skip]
+</code></pre></div></div>
+
+<p>Note that the device <code class="language-plaintext highlighter-rouge">005/004</code> has been renamed <code class="language-plaintext highlighter-rouge">005/006</code>. A quick look
+at what <code class="language-plaintext highlighter-rouge">lsusb</code> has to say confirms that it is actually my mouse.</p>
+
+<p>Again, we are in a situation where no single device can be passed. So we
+have to resort to something different. If we cannot pass a single device
+node, we can pass the entire <code class="language-plaintext highlighter-rouge">/dev/bus/usb</code> folder to the container.
+This is pretty easy to do using bind mounts:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
+    ubuntu:bionic ls /dev/bus/usb
+
+001  002  003  004  005  006  007  008
+</code></pre></div></div>
+
+<p>Let’s check that without the bind mount that path does not exist:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run -it --rm ubuntu:bionic ls /dev/bus/usb
+
+ls: cannot access '/dev/bus/usb': No such file or directory
+</code></pre></div></div>
+
+<p>OK, so far so good. Let’s check the permissions of one of those devices:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
+    ubuntu:bionic ls -lh /dev/bus/usb/005/007
+
+crw-rw-r-- 1 root root 189, 518 Feb 10 20:02 /dev/bus/usb/005/007
+</code></pre></div></div>
+
+<p>It’s root-owned and has read/write permissions for the owner. This is
+not so relevant, however, since our container processes are by default
+run as <code class="language-plaintext highlighter-rouge">root</code> (we didn’t specify a different user using the <code class="language-plaintext highlighter-rouge">-u</code> option
+for <code class="language-plaintext highlighter-rouge">docker run</code>) and so they posses the <code class="language-plaintext highlighter-rouge">CAP_DAC_OVERRIDE</code> capability.</p>
+
+<p>To verify if we can access it, let’s try opening the device for reading:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb ubuntu:bionic \
+    dd if=/dev/bus/usb/005/007 bs=1 count=0
+
+dd: failed to open '/dev/bus/usb/005/007': Operation not permitted
+</code></pre></div></div>
+
+<p>Now, this is weird. The device node shows up inside the container and we
+are root. But we cannot open it. Why?</p>
+
+<h2 id="control-groups-cgroups">
+<a class="anchor" href="#control-groups-cgroups" aria-hidden="true"><span class="octicon octicon-link"></span></a>Control groups (cgroups)</h2>
+
+<p>This has to do with one of the technologies that underpin the entire
+Linux containers world: <em>cgroups</em>. With them, it is possible to define
+control policies for resources managed by the kernel, such as CPU time
+and memory. <a href="https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v1/cgroups.html">This document</a> can be a good starting point to the
+topic for those who care. Basically, they are a way to flexibly define
+and enforce usage limits that processes must obey. For example, a
+process may not be allowed to use more than a certain amount of system
+memory. Every kind of resource that can be affected by cgroups is called
+a <em>resource controller</em> or <em>subsystem</em>.</p>
+
+<p>Now, among the many resource controllers the kernel provides, there is
+the <em>devices</em> controller, which defines how processes can access device
+nodes: more about it can be read <a href="https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v1/devices.html">here</a>. Each cgroup for
+this controller can define rules that either allow or deny access to
+specific devices, depending on their type (character or block), their
+major and minor numbers, and the operation we want to perform (read,
+write, mknod).</p>
+
+<p>By default, unprivileged Docker containers (those not created with the
+<code class="language-plaintext highlighter-rouge">--privileged</code> option) are placed in a cgroup that allows access to just
+a few device nodes.</p>
+
+<p>However, there is a way to tell Docker to add additional rules to this
+cgroup before launching the container: <code class="language-plaintext highlighter-rouge">--device-cgroup-rule</code>.
+It must be added to the <code class="language-plaintext highlighter-rouge">run</code> command and is followed by a rule
+specification. The full definition of rules can be found in the devices
+subsystem documentation, but for now let’s get away with the following:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>a|b|c MAJOR_OR_ASTERISK:MINOR_OR_ASTERISK [r][w][m]
+</code></pre></div></div>
+
+<p>Basically, the first field is a letter among <code class="language-plaintext highlighter-rouge">b</code>, <code class="language-plaintext highlighter-rouge">c</code> and <code class="language-plaintext highlighter-rouge">a</code>,  which
+defines the device node type: block, character and all. It is followed
+by the major and minor numbers separated by a colon; an asterisk can be
+used instead of a number to match all majors, all minors or both.
+Finally, the last field defines the allowed operations: read, write,
+mknod. Any combinations of operations can be specified in a single rule.</p>
+
+<p>To see what Docker allows by default in an unprivileged container, we can
+dump the contents of
+<code class="language-plaintext highlighter-rouge">/sys/fs/cgroup/devices/docker/$CONT_ID/devices.list</code>, the whitelist of
+allowed devices for the container whose ID is <code class="language-plaintext highlighter-rouge">$CONT_ID</code>:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ CONT_ID=$(docker run -id ubuntu:bionic)
+$ cat "/sys/fs/cgroup/devices/docker/$CONT_ID/devices.list"
+
+c 1:5 rwm
+c 1:3 rwm
+c 1:9 rwm
+c 1:8 rwm
+c 5:0 rwm
+c 5:1 rwm
+c *:* m
+b *:* m
+c 1:7 rwm
+c 136:* rwm
+c 5:2 rwm
+c 10:200 rwm
+
+$ docker container rm --force "$CONT_ID"
+</code></pre></div></div>
+
+<p>Back to our previous test, which failed to call <code class="language-plaintext highlighter-rouge">dd</code>. This device has a
+major of 189 and is a character device. Since there is no rule that
+explicitly allows access to such device in the previous list, we got an
+error. Let’s try calling <code class="language-plaintext highlighter-rouge">dd</code> again, but this time we tell Docker to
+allow read and write access to every character device with a major of
+189:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run -it --rm -v /dev/bus/usb:/dev/bus/usb \
+    --device-cgroup-rule 'c 189:* rw' ubuntu:bionic \
+    dd if=/dev/bus/usb/005/007 bs=1 count=0
+
+0+0 records in
+0+0 records out
+0 bytes copied, 3.2911e-05 s, 0.0 kB/s
+</code></pre></div></div>
+
+<p>No error this time! Let’s check the new list of rules for the container
+cgroup:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ CONT_ID=$(docker run -id --device-cgroup-rule 'c 189:* rw' \
+    ubuntu:bionic)
+$ cat "/sys/fs/cgroup/devices/docker/$CONT_ID/devices.list"
+
+c 1:5 rwm
+c 1:3 rwm
+c 1:9 rwm
+c 1:8 rwm
+c 5:0 rwm
+c 5:1 rwm
+c 189:* rw
+c *:* m
+b *:* m
+c 1:7 rwm
+c 136:* rwm
+c 5:2 rwm
+c 10:200 rwm
+
+$ docker container rm --force "$CONT_ID"
+</code></pre></div></div>
+
+<p>Note that now there is a rule allowing read and write access to all character
+devices with a major of 189.</p>
+
+<h2 id="recap">
+<a class="anchor" href="#recap" aria-hidden="true"><span class="octicon octicon-link"></span></a>Recap</h2>
+
+<p>If you need to access USB devices from a container:</p>
+
+<ul>
+  <li>bind-mount <code class="language-plaintext highlighter-rouge">/dev/bus/usb</code> inside the container;</li>
+  <li>take note of the type, major and minor of the device(s) you need to
+access;</li>
+  <li>pass the corresponding rule to <code class="language-plaintext highlighter-rouge">--device-cgroup-rule</code>
+</li>
+</ul>
+
+<p>It should be noted that it is possible to be lazy and just run the
+container as privileged. This allows access to all devices without the
+need to mess with cgroups. However, it provides a much broader access to
+the host than we need in most cases.</p>
+
+<p>If the devices have a dynamic major, using a rule like <code class="language-plaintext highlighter-rouge">c *:* rw</code> is
+still better than using <code class="language-plaintext highlighter-rouge">--privileged</code>.</p>
+
+
+  </div>
+
+  <script src="https://utteranc.es/client.js"
+     repo="binary-manu/binary-is-better"
+     issue-term="pathname"
+     label="comment"
+     theme="preferred-color-scheme"
+     crossorigin="anonymous"
+     async>
+  </script>
+
+  <a class="u-url" href="/binary-is-better/docker/access-usb-devices-from-unprivileged-docker-containers" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/binary-is-better/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Binary is better</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Emanuele Giacomelli</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <a rel="license" href="http://creativecommons.org/licenses/by/3.0/">
+          <img alt="Creative Commons License" style="border-width:0"
+            src="https://i.creativecommons.org/l/by/3.0/88x31.png">
+        </a><ul class="social-media-list"></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Personal notes about my software developer things</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

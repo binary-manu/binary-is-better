@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>ARM cross-toolchain from scratch | Binary is better</title>
+<meta name="generator" content="Jekyll v4.3.1" />
+<meta property="og:title" content="ARM cross-toolchain from scratch" />
+<meta name="author" content="Emanuele Giacomelli" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="A cross toolchain is a set of tools (such as compiler, assembler, linker and related libraries) that run on a kind of system (such as an AMD64 machine) but produce programs that will run on a different architecture (ARM, MIPS, …). Typically, a toolchain installed on one’s system is, conversely, configured to produce programs that run on the same systems as the toolchain itself: this is called a native toolchain." />
+<meta property="og:description" content="A cross toolchain is a set of tools (such as compiler, assembler, linker and related libraries) that run on a kind of system (such as an AMD64 machine) but produce programs that will run on a different architecture (ARM, MIPS, …). Typically, a toolchain installed on one’s system is, conversely, configured to produce programs that run on the same systems as the toolchain itself: this is called a native toolchain." />
+<link rel="canonical" href="http://localhost:4000/binary-is-better/elf/arm-cross-toolchain-from-scratch" />
+<meta property="og:url" content="http://localhost:4000/binary-is-better/elf/arm-cross-toolchain-from-scratch" />
+<meta property="og:site_name" content="Binary is better" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2021-12-22T00:00:00+01:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="ARM cross-toolchain from scratch" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2021-12-22T00:00:00+01:00","datePublished":"2021-12-22T00:00:00+01:00","description":"A cross toolchain is a set of tools (such as compiler, assembler, linker and related libraries) that run on a kind of system (such as an AMD64 machine) but produce programs that will run on a different architecture (ARM, MIPS, …). Typically, a toolchain installed on one’s system is, conversely, configured to produce programs that run on the same systems as the toolchain itself: this is called a native toolchain.","headline":"ARM cross-toolchain from scratch","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/binary-is-better/elf/arm-cross-toolchain-from-scratch"},"url":"http://localhost:4000/binary-is-better/elf/arm-cross-toolchain-from-scratch"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/binary-is-better/feed.xml" title="Binary is better" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/binary-is-better/">Binary is better</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/binary-is-better/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">ARM cross-toolchain from scratch</h1>
+    <p class="post-meta">
+      
+      <time class="dt-published" datetime="2021-12-22T00:00:00+01:00" itemprop="datePublished">Published Dec 22, 2021
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <ul id="toc" class="section-nav">
+<li class="toc-entry toc-h2"><a href="#intro">Intro</a></li>
+<li class="toc-entry toc-h2"><a href="#prepare-the-compilation-tree-and-an-isolated-shell">Prepare the compilation tree and an isolated shell</a></li>
+<li class="toc-entry toc-h2"><a href="#grab-the-sources">Grab the sources</a></li>
+<li class="toc-entry toc-h2"><a href="#understand-the-build-order">Understand the build order</a></li>
+<li class="toc-entry toc-h2"><a href="#build-the-binutils">Build the binutils</a></li>
+<li class="toc-entry toc-h2"><a href="#build-the-bootstrap-compiler">Build the bootstrap compiler</a></li>
+<li class="toc-entry toc-h2"><a href="#extract-the-kernel-headers">Extract the kernel headers</a></li>
+<li class="toc-entry toc-h2"><a href="#build-glibc">Build glibc</a></li>
+<li class="toc-entry toc-h2"><a href="#build-the-final-gcc">Build the final GCC</a></li>
+<li class="toc-entry toc-h2"><a href="#test-the-cross-toolchain">Test the cross-toolchain</a></li>
+</ul><p>A <em>cross toolchain</em> is a set of tools (such as compiler, assembler,
+linker and related libraries) that run on a kind of system (such as an
+AMD64 machine) but produce programs that will run on a different
+architecture (ARM, MIPS, …). Typically, a toolchain installed on one’s
+system is, conversely, configured to produce programs that run on the
+same systems as the toolchain itself: this is called a <em>native
+toolchain</em>.</p>
+
+<p>Cross toolchains are often needed when building software for embedded or
+heavily constrained systems, usually because of two main reasons:</p>
+
+<ul>
+  <li>the target system does not have the ability to run a native toolchain
+for its own architecture, as its CPU, memory, storage or OS
+environment (if any) are too limited;</li>
+  <li>the target system can run a native toolchain, but the CPU speed makes
+compiling even moderately large programs painfully slow. Think about
+the earliest Raspberry Pi models.</li>
+</ul>
+
+<p>A cross toolchain allows using a separate system with plenty of memory,
+CPU cores, storage and a powerful OS to run the build.  The outputs will
+then be copied to the target using a programmer, an SD card or whatever
+the target boots from, and run.</p>
+
+<p>A typical scenario involves using an x86-64 system to build software for
+some low-power ARM system. And often, this software will consist of a
+Linux-based system especially crafted for the task at hand. Many steps
+are required to build such complete, albeit small, system. We need:</p>
+
+<ul>
+  <li>a bootloader to take off after the hardware has initialized itself, to
+load the kernel, device tree blobs and initial ramdisks into memory;</li>
+  <li>a Linux kernel supporting the target architecture and the devices
+present on the board;</li>
+  <li>a set of basic libraries, such as standard C and C++ libraries;</li>
+  <li>standard tools that make up the skeleton of the system: an init
+system, a shell, utilities like <code class="language-plaintext highlighter-rouge">cp</code>, <code class="language-plaintext highlighter-rouge">ls</code>, …;</li>
+  <li>essential files used by libraries and tools and runtime, such as
+<code class="language-plaintext highlighter-rouge">/etc/fstab</code>, <code class="language-plaintext highlighter-rouge">/etc/passwd</code>, <code class="language-plaintext highlighter-rouge">/etc/inittab</code>.</li>
+</ul>
+
+<p>However, the first step to be able to build any of the above for an
+embedded system is to grab a cross-toolchain that targets it.</p>
+
+<p>While there are many resources about building cross-compiled kernels,
+bootloaders and basic utilities, there is not much information about
+building a cross-toolchain. The usual recommendations given by books and
+tutorials boils down to:</p>
+
+<ul>
+  <li>grab a precompiled cross-toolchain from one of major providers on the
+net: both <a href="https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-a/downloads">ARM</a> and <a href="https://toolchains.bootlin.com/">Bootlin</a>
+release high-quality cross toolchains that run on x86-64 hosts and
+produce code for ARM processors;</li>
+  <li>use specialized tools like <a href="https://buildroot.org/">buildroot</a> or
+<a href="https://crosstool-ng.github.io/">crosstool-ng</a>, which automate the creation of the
+toolchain, starting from a user-defined configuration that can even be
+edited graphically.</li>
+</ul>
+
+<p>Now, there is no doubt that, for anything serious and unless <em>very
+special</em> needs arise, using a tried and tested product like the ones
+above is by far the best option. They are made by people who know and
+are both optimized and free of trivial but subtle errors one could make
+while building itself. But…</p>
+
+<p>But using an automated tool takes away the experience (and thus the
+knowledge) about building one of the fundamental blocks of your embedded
+project. I don’t like the idea of blindly using a tool without some
+understanding of how it works, so for me building my own cross toolchain
+is a must, even if the next step is to throw it away and use a
+precompiled one.</p>
+
+<p>Unfortunately, finding accurate information on this topic seems a little
+difficult. Your best bet seems to be the <a href="https://trac.clfs.org/wiki/read">Cross Linux From
+Scratch</a> book. It shows the steps required to build a cross
+toolchain, but it has a number of limitations:</p>
+
+<ul>
+  <li>the latest stable version dates back to 2014;</li>
+  <li>it is written for many architectures, but there is no ARM;</li>
+  <li>the explanations about why you need certain options are, at least in
+my eyes, a little terse.</li>
+</ul>
+
+<p>So I decided to try and make my own, mixing instructions and tips from
+various sources with my own experimentation. Touching problems with your
+own hands and finding a solution is invaluable. This document explains
+the process I followed and, more importantly, the rationale of each
+option or choice.</p>
+
+<p>A warning is due here. While the output toolchain <em>seems to work</em> (it
+successfully compiled a bootable Linux system for a Raspberry Pi made by
+U-Boot, the Linux kernel, Busybox and an Hello World C++ sample running
+on top of that), the whole process is about <em>learning</em>. This means that
+there are no guarantees that the toolchain does not contain some subtle
+bugs that may break specific packages. Also, it is likely not as well
+optimized as it could and output code could be suboptimal.  You should
+definitely <em>not</em> use it for anything serious.</p>
+
+<p>That being said, let’s roll up our sleeves and start building.</p>
+
+<h2 id="intro">
+<a class="anchor" href="#intro" aria-hidden="true"><span class="octicon octicon-link"></span></a>Intro</h2>
+
+<p>We will build a cross-toolchain targeting 32-bit ARM processors, but
+hosted on a AMD64 system. The latest available versions of GCC, glibc
+and the GNU binutils are used. The host system is Arch Linux and we’ll
+use some of its libraries when building GCC (such as MPFR and GMP). The
+final toolchain will be relocatable, meaning you can move it whereever
+you like and it will still find include and library folders correctly.</p>
+
+<h2 id="prepare-the-compilation-tree-and-an-isolated-shell">
+<a class="anchor" href="#prepare-the-compilation-tree-and-an-isolated-shell" aria-hidden="true"><span class="octicon octicon-link"></span></a>Prepare the compilation tree and an isolated shell</h2>
+
+<p>The very first thing to do is ensuring that the host system has
+essential development packages installed:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>pacman <span class="nt">-S</span> <span class="nt">--noconfirm</span> <span class="nt">--needed</span> base-devel
+</code></pre></div></div>
+
+<p>Both LFS and CLFS create a new unprivileged user that is employed to
+build packages, guaranteeing the maximum isolation between the built
+packages and the host system. Using our current user may raise issues,
+because most build operations react to environment variables.  If by
+chance some variables in our environment clash with parameters build
+systems expect, we may inadvertently alter the build.</p>
+
+<p>However, creating a new user for that looks a bit overkill to me. A
+simpler approach involves <code class="language-plaintext highlighter-rouge">env</code> and appropriate shell options to run a
+new shell in a clean environment.</p>
+
+<p>Sources and compiled artifacts are kept under a single directory tree.
+You can place it everywhere you like, although it should be on a POSIX
+filesystem with at least 10GiB of free space. I used
+<code class="language-plaintext highlighter-rouge">~/projects/embedded</code>. This directory will be referenced as <code class="language-plaintext highlighter-rouge">$CROSSDIR</code>.</p>
+
+<p>Inside this folder, create a new file <code class="language-plaintext highlighter-rouge">activate.bash</code>, make it
+executable, and paster the following code inside:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">#!/usr/bin/env bash</span>
+
+<span class="nv">CROSSDIR</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PWD</span><span class="s2">"</span>
+<span class="nv">TOOLS</span><span class="o">=</span><span class="s2">"</span><span class="nv">$CROSSDIR</span><span class="s2">/mytoolchain/tools"</span>
+<span class="nv">SYSROOT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">/sysroot"</span>
+<span class="nv">TARGET_TRIPLET</span><span class="o">=</span>arm-none-linux-gnueabihf
+<span class="nv">HOST_TRIPLET</span><span class="o">=</span><span class="s2">"</span><span class="si">$(</span>gcc <span class="nt">-dumpmachine</span><span class="si">)</span><span class="s2">"</span>
+
+<span class="nb">exec env</span> <span class="nt">-i</span> <span class="se">\</span>
+  <span class="sb">`</span>: Copy some vars from the current environment<span class="sb">`</span> <span class="se">\</span>
+  <span class="nv">USER</span><span class="o">=</span><span class="s2">"</span><span class="nv">$USER</span><span class="s2">"</span> <span class="nv">LOGNAME</span><span class="o">=</span><span class="s2">"</span><span class="nv">$LOGNAME</span><span class="s2">"</span> <span class="nv">TERM</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TERM</span><span class="s2">"</span> <span class="nv">HOME</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">"</span> <span class="se">\</span>
+  <span class="sb">`</span>: Some other vars are <span class="nb">set </span>to specific values<span class="sb">`</span> <span class="se">\</span>
+  <span class="nv">CROSSDIR</span><span class="o">=</span><span class="s2">"</span><span class="nv">$CROSSDIR</span><span class="s2">"</span> <span class="nv">TOOLS</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">"</span> <span class="nv">SYSROOT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$SYSROOT</span><span class="s2">"</span> <span class="se">\</span>
+  <span class="nv">HOST_TRIPLET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOST_TRIPLET</span><span class="s2">"</span> <span class="nv">TARGET_TRIPLET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TARGET_TRIPLET</span><span class="s2">"</span> <span class="se">\</span>
+  <span class="nv">ARCH</span><span class="o">=</span><span class="s1">'arm'</span> <span class="nv">CROSS_COMPILE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TARGET_TRIPLET</span><span class="s2">-"</span> <span class="se">\</span>
+  <span class="nv">PATH</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">/bin:/usr/local/bin:/usr/bin"</span> <span class="nv">PS1</span><span class="o">=</span><span class="s1">'[\u@(cross)\h \W]\$ '</span> <span class="se">\</span>
+  <span class="sb">`</span>: Launch a new instance of bash<span class="sb">`</span> <span class="se">\</span>
+  bash <span class="nt">--norc</span> +h
+</code></pre></div></div>
+
+<p>What this file does is launching a new instance of <code class="language-plaintext highlighter-rouge">bash</code> while purging
+the current environment of unwanted items:</p>
+
+<ul>
+  <li>
+<code class="language-plaintext highlighter-rouge">env</code> is a tool that modifies the environment before launching a
+process, effectively causing the new process to see an altered
+environment w.r.t. the parent;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">-i</code> causes <code class="language-plaintext highlighter-rouge">env</code> the create an initially empty environment for the
+new process;</li>
+  <li>variable definitions in the form <code class="language-plaintext highlighter-rouge">VAR=VALUE</code>, like <code class="language-plaintext highlighter-rouge">HOME="$HOME"</code>,
+simply add some variables into the new process environment.  A
+completely empty environment is not functional: most applications
+expect a minimal set of standard variables to be available, such as
+<code class="language-plaintext highlighter-rouge">HOME</code> and <code class="language-plaintext highlighter-rouge">USER</code>. They are either copied them from the current
+environment (so that the new shell sees the same values as the current
+shell) or set to specific values.  Some of this variables, like <code class="language-plaintext highlighter-rouge">ARCH</code>
+or <code class="language-plaintext highlighter-rouge">TARGET_TRIPLET</code>, will be used and explained later;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">bash --norc +h</code> launches a new instance of <code class="language-plaintext highlighter-rouge">bash</code>, which is asked to
+avoid executing its usual startup files <code class="language-plaintext highlighter-rouge">/etc/bash.bashrc</code> and
+<code class="language-plaintext highlighter-rouge">~/.bashrc</code> by means of <code class="language-plaintext highlighter-rouge">--norc</code>. Without this option, even if the
+environment is clear, stuff could still be added by code contained in
+those files.  <code class="language-plaintext highlighter-rouge">+h</code> disables command hashing as recommended by LFS
+<a href="https://www.linuxfromscratch.org/lfs/view/stable/chapter04/settingenvironment.html">environment setup</a>.</li>
+</ul>
+
+<p>Start a new, pristine shell by running:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./activate.bash
+</code></pre></div></div>
+
+<p>A call to <code class="language-plaintext highlighter-rouge">printenv</code> will confirm that the environment is almost empty.
+There are a few thing to note here:</p>
+
+<ul>
+  <li>the <code class="language-plaintext highlighter-rouge">PS1</code> prompt contains the <code class="language-plaintext highlighter-rouge">(cross)</code> marker as a reminder that this
+is not our usual environment;</li>
+  <li>there is no <code class="language-plaintext highlighter-rouge">DISPLAY</code>, so X apps will not work; use a regular terminal for
+that;</li>
+  <li>there is no <code class="language-plaintext highlighter-rouge">/bin</code> in the <code class="language-plaintext highlighter-rouge">PATH</code>, as we assume that our host system
+(Arch Linux) is <a href="https://www.freedesktop.org/wiki/Software/systemd/TheCaseForTheUsrMerge/">usrmerged</a>;</li>
+  <li>a custom variable <code class="language-plaintext highlighter-rouge">TOOLS</code> is initialized to point to the subdirectory
+<code class="language-plaintext highlighter-rouge">mytoolchain/tools</code>. This is where the compiled cross-toolchain will
+be placed. Its <code class="language-plaintext highlighter-rouge">bin</code> subdirectory is also added to the <code class="language-plaintext highlighter-rouge">PATH</code>.</li>
+</ul>
+
+<h2 id="grab-the-sources">
+<a class="anchor" href="#grab-the-sources" aria-hidden="true"><span class="octicon octicon-link"></span></a>Grab the sources</h2>
+
+<p>To build a complete toolchain, we need the following:</p>
+
+<ul>
+  <li>the <a href="https://www.gnu.org/software/binutils/">GNU binutils</a>, which comprise the assembler (<code class="language-plaintext highlighter-rouge">as</code>), the
+link editor (<code class="language-plaintext highlighter-rouge">ld</code>) and a bunch of useful extras;</li>
+  <li>the <a href="https://gcc.gnu.org/">GNU Compiler Collection (GCC)</a>, providing C and C++
+compilers, as well as an implementation of the C++ standard library;</li>
+  <li>a C standard library. Unlike the C++ library, this is not bundled with
+GCC and we get to choose one among a number of choices (glibc, musl,
+…).  To keep things simple, we’ll be using the GNU C Library,
+<a href="https://www.gnu.org/software/libc/">glibc</a>, although it will not result in the smallest programs
+for our target system. Other C libraries can help producing smaller
+final executables, but such level of optimization is beyond the scope
+of this article.</li>
+  <li>the <a href="https://www.kernel.org/">Linux kernel</a> headers, since glibc depends on them when
+built to run on a Linux system.</li>
+</ul>
+
+<p>The following snippet downloads the versions that I tested to
+successfully build and place them under <code class="language-plaintext highlighter-rouge">sources</code>, giving each archive
+its own folder:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">mkdir</span> <span class="nt">-p</span> <span class="s2">"</span><span class="nv">$CROSSDIR</span><span class="s2">/mytoolchain/sources"</span>
+<span class="nb">cd</span> <span class="s2">"</span><span class="nv">$CROSSDIR</span><span class="s2">/mytoolchain/sources"</span>
+download_sources<span class="o">()</span> <span class="o">{</span>
+  <span class="nb">local dirs</span><span class="o">=(</span>binutils gcc glibc linux<span class="o">)</span>
+  <span class="nb">local </span><span class="nv">urls</span><span class="o">=(</span>
+    <span class="s1">'https://mirror.easyname.at/gnu/binutils/binutils-2.37.tar.xz'</span>
+    <span class="s1">'https://ftp.nluug.nl/languages/gcc/releases/gcc-11.2.0/gcc-11.2.0.tar.xz'</span>
+    <span class="s1">'https://ftp.gnu.org/gnu/glibc/glibc-2.34.tar.xz'</span>
+    <span class="s1">'https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.15.7.tar.xz'</span>
+  <span class="o">)</span>
+  <span class="k">for</span> <span class="o">((</span> <span class="nv">i</span><span class="o">=</span>0<span class="p">;</span> i &lt; <span class="k">${#</span><span class="nv">dirs</span><span class="p">[@]</span><span class="k">}</span><span class="p">;</span> i++ <span class="o">))</span> <span class="o">{</span>
+    <span class="nb">mkdir</span> <span class="nt">-p</span> <span class="s2">"</span><span class="k">${</span><span class="nv">dirs</span><span class="p">[i]</span><span class="k">}</span><span class="s2">"</span>
+    <span class="o">(</span> <span class="nb">cd</span> <span class="s2">"</span><span class="k">${</span><span class="nv">dirs</span><span class="p">[i]</span><span class="k">}</span><span class="s2">"</span> <span class="o">&amp;&amp;</span> curl <span class="nt">-LO</span> <span class="s2">"</span><span class="k">${</span><span class="nv">urls</span><span class="p">[i]</span><span class="k">}</span><span class="s2">"</span> <span class="o">)</span>
+  <span class="o">}</span>
+<span class="o">}</span>
+download_sources
+</code></pre></div></div>
+
+<p>We should end up with a file tree like this:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/home/manu/projects/embedded/mytoolchain/sources
+|-- binutils
+|   `-- binutils-2.37.tar.xz
+|-- gcc
+|   `-- gcc-11.2.0.tar.xz
+|-- glibc
+|   `-- glibc-2.34.tar.xz
+`-- linux
+    `-- linux-5.15.7.tar.xz
+</code></pre></div></div>
+
+<h2 id="understand-the-build-order">
+<a class="anchor" href="#understand-the-build-order" aria-hidden="true"><span class="octicon octicon-link"></span></a>Understand the build order</h2>
+
+<p>The sources being available, all pieces must be built in the correct
+order.  Ideally, there should be a linear build order so that each item
+is compiled only once.</p>
+
+<p>This looks simple in theory:</p>
+
+<ol>
+  <li>first, the cross-binutils. These tools will handle the binary format
+of the <em>target</em> (ARM), but will otherwise run and use libraries from
+the <em>host</em> (x86-64). Only a native x86-64 compiler is required to
+build them, so we can do this right away with our local system
+compiler;</li>
+  <li>Linux kernel headers do not need to be built at all, they are simply
+copied somewhere the cross-compiler will find them, so again
+we can do this step right away;</li>
+  <li>at this point we <em>could</em> build the cross-GCC: again, ideally this
+package emits code for the target but only depends on libraries and
+headers from the host;</li>
+  <li>use the cross-GCC to build glibc for the target.</li>
+</ol>
+
+<p>Unfortunately, this is not possible.</p>
+
+<p>As explained by <a href="https://www.linuxfromscratch.org/lfs/view/stable/partintro/toolchaintechnotes.html">LFS</a> and <a href="https://crosstool-ng.github.io/docs/toolchain-construction/">crosstool-ng</a>,
+there is a circular dependency between GCC and glibc: glibc is a <em>target
+library</em>, so it must be compiled with a cross compiler for the target
+system and obviously depends on cross-GCC. However, some components
+of GCC (such as <code class="language-plaintext highlighter-rouge">libgcc</code> and <code class="language-plaintext highlighter-rouge">libstdc++</code>) depend on the C library of the
+target. This creates a dependency loop: we need a cross-GCC to build
+glibc, but without a built glibc we cannot build a cross-GCC. This
+situation is depicted in the following picture:</p>
+
+<p><a href="https://mermaid.live/edit/#eyJjb2RlIjoiZ3JhcGggXG4gICAgR0NDW0dDQ10gLS0-IExEW2JpbnV0aWxzXVxuICAgIEdDQyAtLT58Q2lyY3VsYXIgZGVwLnwgQ1tDIExpYnJhcnldXG4gICAgQyAtLT4gR0NDXG4gICAgQyAtLT4gS1tMaW51eCBrZXJuZWwgaGVhZGVyc11cbiAgIiwibWVybWFpZCI6IntcbiAgXCJ0aGVtZVwiOiBcImRhcmtcIlxufSIsInVwZGF0ZUVkaXRvciI6ZmFsc2UsImF1dG9TeW5jIjp0cnVlLCJ1cGRhdGVEaWFncmFtIjpmYWxzZX0"><img src="https://mermaid.ink/img/eyJjb2RlIjoiZ3JhcGggXG4gICAgR0NDW0dDQ10gLS0-IExEW2JpbnV0aWxzXVxuICAgIEdDQyAtLT58Q2lyY3VsYXIgZGVwLnwgQ1tDIExpYnJhcnldXG4gICAgQyAtLT4gR0NDXG4gICAgQyAtLT4gS1tMaW51eCBrZXJuZWwgaGVhZGVyc11cbiAgIiwibWVybWFpZCI6eyJ0aGVtZSI6ImRhcmsifSwidXBkYXRlRWRpdG9yIjpmYWxzZSwiYXV0b1N5bmMiOnRydWUsInVwZGF0ZURpYWdyYW0iOmZhbHNlfQ" alt=""></a></p>
+
+<p>How do we escape this? Thankfully, by passing certain options to the GCC
+build system, it is possible to eliminate the reliance on the target
+glibc, and thus build GCC <em>before</em> glibc. The price we pay for this is
+that the compiler produced this way is not complete: it cannot be used
+to build hosted C or C++ code (since GCC’s C++ standard library depends
+on the target C library, and regular C apps expect a working C library
+as well) and <code class="language-plaintext highlighter-rouge">libgcc</code>, an internal component of GCC which is linked to
+pretty <em>anything</em> GCC builds and provides some low-level services, lacks
+certain features.  This reduced compiler, called the <em>bootstrap
+compiler</em>, can however be used to build C code that does not depend on
+the missing features and that does not require a C library in place.
+Fortunately, glibc fits this scenario.</p>
+
+<p>Therefore, we can break free by first building a bootstrap compiler,
+using it to compile glibc, then <em>recompiling GCC again</em>, this time by
+telling it that a target C library is available, thus building the full
+thing. This second GCC build is called the <em>final compiler</em>, and is what
+will become part of our toolchain. The bootstrap compiler will be thrown
+away as soon as the final compiler is ready. Here the dependency graph,
+updated:</p>
+
+<p><a href="https://mermaid.live/edit/#eyJjb2RlIjoiZ3JhcGggXG4gICAgYkdDQ1tCb290c3RyYXAgR0NDXSAtLT4gTERbYmludXRpbHNdXG4gICAgR0NDIC0tPiBDW0MgTGlicmFyeV1cbiAgICBDIC0tPiBiR0NDXG4gICAgR0NDIC0tPiBMRFxuICAgIEMgLS0-IEtbTGludXgga2VybmVsIGhlYWRlcnNdXG4gICIsIm1lcm1haWQiOiJ7XG4gIFwidGhlbWVcIjogXCJkYXJrXCJcbn0iLCJ1cGRhdGVFZGl0b3IiOmZhbHNlLCJhdXRvU3luYyI6dHJ1ZSwidXBkYXRlRGlhZ3JhbSI6ZmFsc2V9"><img src="https://mermaid.ink/img/eyJjb2RlIjoiZ3JhcGggXG4gICAgYkdDQ1tCb290c3RyYXAgR0NDXSAtLT4gTERbYmludXRpbHNdXG4gICAgR0NDIC0tPiBDW0MgTGlicmFyeV1cbiAgICBDIC0tPiBiR0NDXG4gICAgR0NDIC0tPiBMRFxuICAgIEMgLS0-IEtbTGludXgga2VybmVsIGhlYWRlcnNdXG4gICIsIm1lcm1haWQiOnsidGhlbWUiOiJkYXJrIn0sInVwZGF0ZUVkaXRvciI6ZmFsc2UsImF1dG9TeW5jIjp0cnVlLCJ1cGRhdGVEaWFncmFtIjpmYWxzZX0" alt=""></a></p>
+
+<p>Building glibc with the bootstrap compiler does not impact its level of
+completeness or optimization. From <a href="https://www.linuxfromscratch.org/lfs/view/stable/partintro/toolchaintechnotes.html">LFS, Toolchain Technical
+Notes</a>:</p>
+
+<blockquote>
+  <p>Now, there is more about cross-compiling: the C language is not just a
+compiler, but also defines a standard library. In this book, the GNU C
+library, named glibc, is used. This library must be compiled for the
+lfs machine, that is, using the cross compiler cc1. But the compiler
+itself uses an internal library implementing complex instructions not
+available in the assembler instruction set. This internal library is
+named libgcc, and must be linked to the glibc library to be fully
+functional! Furthermore, the standard library for C++ (libstdc++) also
+needs being linked to glibc. The solution to this chicken and egg
+problem is to first build a degraded cc1 based libgcc, lacking some
+functionalities such as threads and exception handling, then build
+glibc using this degraded compiler <strong>(glibc itself is not degraded)</strong>, then
+build libstdc++. But this last library will lack the same
+functionalities as libgcc.</p>
+</blockquote>
+
+<p>Our final build order therefore is:</p>
+
+<ol>
+  <li>binutils;</li>
+  <li>bootstrap GCC;</li>
+  <li>Linux kernel headers;</li>
+  <li>glibc;</li>
+  <li>final GCC.</li>
+</ol>
+
+<h2 id="build-the-binutils">
+<a class="anchor" href="#build-the-binutils" aria-hidden="true"><span class="octicon octicon-link"></span></a>Build the binutils</h2>
+
+<p>Let’s start with the first package.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cd</span> <span class="nv">$CROSSDIR</span>/mytoolchain/sources/binutils
+<span class="nb">tar</span> <span class="nt">-xf</span> binutils-2.37.tar.xz
+<span class="nb">mkdir</span> <span class="nt">-p</span> build
+<span class="nb">cd </span>build
+
+../binutils-2.37/configure <span class="nt">--prefix</span><span class="o">=</span><span class="s1">''</span> <span class="nt">--enable-initfini-array</span> <span class="se">\</span>
+  <span class="nt">--with-sysroot</span><span class="o">=</span><span class="s1">'${exec_prefix}/sysroot'</span> <span class="nt">--target</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TARGET_TRIPLET</span><span class="s2">"</span> 
+</code></pre></div></div>
+
+<p>First, we extract the sources and then create a <code class="language-plaintext highlighter-rouge">build</code> directory where
+the build system will create the binaries. Often, when building from a
+tarball, we can run the <code class="language-plaintext highlighter-rouge">configure</code> script directly from the sources
+folder, doing what is called an <em>in-tree</em> build, with object files being
+placed alongside the sources. The GNU build system also supports
+<em>out-of-tree</em> builds, where basically we execute <code class="language-plaintext highlighter-rouge">configure &amp;&amp; make</code> from
+a different folder than the one holding the sources. However, depending
+on the package, doing an out-of-tree build can be either recommended or
+mandatory, and notably GCC falls in this category. As GCC docs say:</p>
+
+<blockquote>
+  <p>First, we highly recommend that GCC be built into a separate directory
+from the sources which does not reside within the source tree. This is
+how we generally build GCC; building where srcdir == objdir should
+still work, but doesn’t get extensive testing; building where objdir
+is a subdirectory of srcdir is unsupported.</p>
+</blockquote>
+
+<p>Since there should be no negative effects in doing an out-of-tree build
+even when there is no explicit requirement to do so, I opted to build
+every package this way. The <code class="language-plaintext highlighter-rouge">build</code> folder is a sibling of the sources
+folder.</p>
+
+<p>Now, let’s break down the <code class="language-plaintext highlighter-rouge">configure</code> options and the reasons behind them.</p>
+
+<p><code class="language-plaintext highlighter-rouge">--prefix=''</code> determines the usual installation prefix that all
+autotools-based builds expect. It serves two main purposes:</p>
+<ul>
+  <li>it defines the path under which <code class="language-plaintext highlighter-rouge">make install</code> will place the newly
+built files (although we can add a prefix to that path using the
+<code class="language-plaintext highlighter-rouge">DESTDIR</code> variable);</li>
+  <li>it can be hardcoded into applications so that they know where to look
+for related components.</li>
+</ul>
+
+<p>The second point can be problematic because it means that, once built,
+an app will expect to be installed under a specific path and therefore
+it cannot be moved elsewhere on the filesystem, because it will still
+look for its bits and pieces under the original path.</p>
+
+<p>Thankfully, binutils (but also GCC) developers have gone through lengths
+to ensure that we can build <em>relocatable</em> toolchains. A program is
+relocatable if it does not depend on its installation prefix, but
+instead locate its parts by obtaining the absolute path to its own
+executable and them moving from there using relative paths.</p>
+
+<p><code class="language-plaintext highlighter-rouge">ld</code> uses the following technique (implemented in
+<code class="language-plaintext highlighter-rouge">binutils-2.37/libiberty/make-relative-prefix.c</code>):</p>
+<ul>
+  <li>it takes the name of the executable as passed to the command
+invocation (its <code class="language-plaintext highlighter-rouge">argv[0]</code>);</li>
+  <li>if it’s just a program name (i.e. <code class="language-plaintext highlighter-rouge">ld</code>), it looks for it in the <code class="language-plaintext highlighter-rouge">PATH</code>
+to get the full path;</li>
+  <li>if it’s a relative path, it resolves it to the full path using the
+current working directory;</li>
+  <li>otherwise it’s used verbatim;</li>
+  <li>resolve links to get the pathname of the real executable. This is
+essential to reach the real place where the app is placed, even if the
+program is called through a link.</li>
+</ul>
+
+<p>If an applications is relocatable, the prefix is not that important
+anymore. However, when running <code class="language-plaintext highlighter-rouge">make install DESTDIR="$DESTDIR"</code>, it is
+still used to compute paths, so that things gets installed under
+<code class="language-plaintext highlighter-rouge">$DESTDIR/$PREFIX</code> An empty prefix (‘’) (which I copied from the configuration
+switches used for the official <a href="https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-a/downloads">ARM toolchain</a>) means
+that no prefix at all is used and files would be placed under <code class="language-plaintext highlighter-rouge">$DESTDIR/bin</code>,
+<code class="language-plaintext highlighter-rouge">$DESTDIR/lib </code> and so on.</p>
+
+<p>Now, to <code class="language-plaintext highlighter-rouge">with-sysroot</code>. A <em>sysroot</em> is a prefix under which a toolchain
+program (<code class="language-plaintext highlighter-rouge">ld</code> in this case, but it also applies to <code class="language-plaintext highlighter-rouge">gcc</code>) expects to be
+able to find include files and libraries for the target, in our case,
+for ARM.  This is where we will install things, like the C library,
+which pertain to the target.</p>
+
+<p>For the linker to know where the sysroot is, we have two options:</p>
+
+<ul>
+  <li>we can pass the <code class="language-plaintext highlighter-rouge">--sysroot="/path/to/sysroot"</code> option to every <code class="language-plaintext highlighter-rouge">ld</code>
+invocation. This must also include any calls made to <code class="language-plaintext highlighter-rouge">ld</code> by other
+tools higher in the toolchain and is easy to forget about;</li>
+  <li>we can specify the default sysroot at build time and have <code class="language-plaintext highlighter-rouge">ld</code>
+remember it. It can always be overridden on a per-call basis using
+<code class="language-plaintext highlighter-rouge">--sysroot</code>, but at least the default behavior will be sane even
+without it. This is what <code class="language-plaintext highlighter-rouge">--with-sysroot</code> does.</li>
+</ul>
+
+<p>Forgetting to pass <code class="language-plaintext highlighter-rouge">--with-sysroot</code> when building <em>and</em> also forgetting
+to use <code class="language-plaintext highlighter-rouge">--sysroot</code> when calling the cross-linker will cause it to search
+for target libraries under default paths <em>on the host</em>, like <code class="language-plaintext highlighter-rouge">/usr/lib/</code>.
+This is not what we want as libraries there are compiled for the host
+architecture.</p>
+
+<p>We can pass <code class="language-plaintext highlighter-rouge">--with-sysroot</code> any path, but the binutils support a
+special case that is essential to make the toolchain relocatable: if the
+sysroot is located under the <code class="language-plaintext highlighter-rouge">exec-prefix</code> for the build (which defaults
+to <code class="language-plaintext highlighter-rouge">prefix</code>if not overridden), <code class="language-plaintext highlighter-rouge">ld</code> will automatically compute its path
+using the executable path. This means that effectively the sysroot moves
+along with the rest of the toolchain. Without this behaviour, we would
+end up with a toolchain that is not actually relocatable, because it
+would search for libraries under a fixed sysroot path.</p>
+
+<p>The build system accepts various forms for the sysroot path for it to be
+considered <em>under the exec-prefix</em> and thus relocatable, which can be
+found by looking at <code class="language-plaintext highlighter-rouge">binutils-2.37/ld/configure</code> (an excerpt follows):</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Check whether --with-sysroot was given.</span>
+<span class="k">if </span><span class="nb">test</span> <span class="s2">"</span><span class="k">${</span><span class="nv">with_sysroot</span><span class="p">+set</span><span class="k">}</span><span class="s2">"</span> <span class="o">=</span> <span class="nb">set</span><span class="p">;</span> <span class="k">then</span> :
+  <span class="nv">withval</span><span class="o">=</span><span class="nv">$with_sysroot</span><span class="p">;</span>
+ <span class="k">case</span> <span class="k">${</span><span class="nv">with_sysroot</span><span class="k">}</span> <span class="k">in
+ </span><span class="nb">yes</span><span class="p">)</span> <span class="nv">TARGET_SYSTEM_ROOT</span><span class="o">=</span><span class="s1">'${exec_prefix}/${target_alias}/sys-root'</span> <span class="p">;;</span>
+ <span class="k">*</span><span class="p">)</span> <span class="nv">TARGET_SYSTEM_ROOT</span><span class="o">=</span><span class="nv">$with_sysroot</span> <span class="p">;;</span>
+ <span class="k">esac</span>
+
+ <span class="nv">TARGET_SYSTEM_ROOT_DEFINE</span><span class="o">=</span><span class="s1">'-DTARGET_SYSTEM_ROOT=\"$(TARGET_SYSTEM_ROOT)\"'</span>
+ <span class="nv">use_sysroot</span><span class="o">=</span><span class="nb">yes
+
+ </span><span class="k">if </span><span class="nb">test</span> <span class="s2">"x</span><span class="nv">$prefix</span><span class="s2">"</span> <span class="o">=</span> xNONE<span class="p">;</span> <span class="k">then
+  </span><span class="nv">test_prefix</span><span class="o">=</span>/usr/local
+ <span class="k">else
+  </span><span class="nv">test_prefix</span><span class="o">=</span><span class="nv">$prefix</span>
+ <span class="k">fi
+ if </span><span class="nb">test</span> <span class="s2">"x</span><span class="nv">$exec_prefix</span><span class="s2">"</span> <span class="o">=</span> xNONE<span class="p">;</span> <span class="k">then
+  </span><span class="nv">test_exec_prefix</span><span class="o">=</span><span class="nv">$test_prefix</span>
+ <span class="k">else
+  </span><span class="nv">test_exec_prefix</span><span class="o">=</span><span class="nv">$exec_prefix</span>
+ <span class="k">fi
+ case</span> <span class="k">${</span><span class="nv">TARGET_SYSTEM_ROOT</span><span class="k">}</span> <span class="k">in</span>
+<span class="c"># &lt;====== These are the interesting lines</span>
+ <span class="s2">"</span><span class="k">${</span><span class="nv">test_prefix</span><span class="k">}</span><span class="s2">"</span><span class="p">|</span><span class="s2">"</span><span class="k">${</span><span class="nv">test_prefix</span><span class="k">}</span><span class="s2">/"</span><span class="k">*</span><span class="p">|</span><span class="se">\</span>
+ <span class="s2">"</span><span class="k">${</span><span class="nv">test_exec_prefix</span><span class="k">}</span><span class="s2">"</span><span class="p">|</span><span class="s2">"</span><span class="k">${</span><span class="nv">test_exec_prefix</span><span class="k">}</span><span class="s2">/"</span><span class="k">*</span><span class="p">|</span><span class="se">\</span>
+ <span class="s1">'${prefix}'</span><span class="p">|</span><span class="s1">'${prefix}/'</span><span class="k">*</span><span class="p">|</span><span class="se">\</span>
+ <span class="s1">'${exec_prefix}'</span><span class="p">|</span><span class="s1">'${exec_prefix}/'</span><span class="k">*</span><span class="p">)</span>
+<span class="c"># &lt;====== End</span>
+   <span class="nv">t</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TARGET_SYSTEM_ROOT_DEFINE</span><span class="s2"> -DTARGET_SYSTEM_ROOT_RELOCATABLE"</span>
+   <span class="nv">TARGET_SYSTEM_ROOT_DEFINE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$t</span><span class="s2">"</span>
+   <span class="p">;;</span>
+ <span class="k">esac</span>
+
+<span class="k">else
+
+ </span><span class="nv">use_sysroot</span><span class="o">=</span>no
+ <span class="nv">TARGET_SYSTEM_ROOT</span><span class="o">=</span>
+ <span class="nv">TARGET_SYSTEM_ROOT_DEFINE</span><span class="o">=</span><span class="s1">'-DTARGET_SYSTEM_ROOT=\"\"'</span>
+
+<span class="k">fi</span>
+</code></pre></div></div>
+
+<p>I chose to use the form that starts with the literal <code class="language-plaintext highlighter-rouge">${exec_prefix}</code>.
+The sysroot will be placed under the <code class="language-plaintext highlighter-rouge">sysroot</code> folder under the
+exec-prefix and thus will be relocated with the rest of the tools.</p>
+
+<p><code class="language-plaintext highlighter-rouge">--target="$TARGET_TRIPLET"</code> is simple: it specifies the <em>machine
+triplet</em> that defines the target system. We have specified it in an
+environment variable in our <code class="language-plaintext highlighter-rouge">activate.bash</code> file while setting up the
+environment. <a href="https://www.linuxfromscratch.org/lfs/view/stable/partintro/toolchaintechnotes.html">LFS</a> explains triplets, as well as <a href="https://wiki.osdev.org/Target_Triplet">this OSDev
+page</a>. Please note that “triplets” can actually have
+four fields, like in our case.</p>
+
+<p>Finally, <code class="language-plaintext highlighter-rouge">--enable-initfini-array</code> tells the binutils to enable support
+for a feature of the target system binary file format
+(<a href="http://www.sco.com/developers/gabi/latest/ch4.intro.html">ELF</a>) that cannot be detected automatically when
+cross-compiling.</p>
+
+<p>Now it’s time tun run make:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make <span class="nt">-j</span><span class="sb">`</span><span class="nb">nproc</span><span class="sb">`</span>
+</code></pre></div></div>
+
+<p>After many lines of output you should be back to the terminal, hopefully
+without errors. Double check that the sysroot was detected as
+relocatable by checking the contents of <code class="language-plaintext highlighter-rouge">ld/Makefile</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">grep </span>TARGET_SYSTEM_ROOT_RELOCATABLE ld/Makefile | <span class="nb">head</span> <span class="nt">-n1</span>
+
+<span class="c"># You should see something like:</span>
+<span class="c"># TARGET_SYSTEM_ROOT_DEFINE = -DTARGET_SYSTEM_ROOT=\"$(TARGET_SYSTEM_ROOT)\" -DTARGET_SYSTEM_ROOT_RELOCATABLE</span>
+</code></pre></div></div>
+
+<p>If there’s no output, check the call to <code class="language-plaintext highlighter-rouge">configure</code>. As things are, the
+sysroot will not move together with the rest of the toolchain.</p>
+
+<p>If everything is fine, let’s install binutils:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make <span class="nb">install </span><span class="nv">DESTDIR</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">"</span>
+</code></pre></div></div>
+
+<h2 id="build-the-bootstrap-compiler">
+<a class="anchor" href="#build-the-bootstrap-compiler" aria-hidden="true"><span class="octicon octicon-link"></span></a>Build the bootstrap compiler</h2>
+
+<p>Now it’s time to build the bootstrap compiler.</p>
+
+<p>GCC requires some additional libraries, which are listed in its
+<a href="https://gcc.gnu.org/install/prerequisites.html">prerequisites page</a>. We will use the versions that ship
+with Arch Linux, as they are recent enough.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>pacman <span class="nt">-S</span> <span class="nt">--noconfirm</span> <span class="nt">--needed</span> libmpc mpfr gmp
+<span class="o">(</span>
+  <span class="nb">cd</span> /tmp
+  curl <span class="nt">-L</span> https://aur.archlinux.org/cgit/aur.git/snapshot/isl.tar.gz | <span class="nb">tar</span> <span class="nt">-xzf</span> -
+  <span class="nb">cd </span>isl
+  makepkg <span class="nt">-si</span>
+<span class="o">)</span>
+</code></pre></div></div>
+
+<p>Unpack and configure GCC:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cd</span> <span class="nv">$CROSSDIR</span>/mytoolchain/sources/gcc
+<span class="nb">tar</span> <span class="nt">-xf</span> gcc-11.2.0.tar.xz
+<span class="nb">mv </span>gcc-11.2.0<span class="o">{</span>,-bootstrap<span class="o">}</span>
+<span class="nb">mkdir</span> <span class="nt">-p</span> build-bootstrap
+<span class="nb">cd </span>build-bootstrap
+
+../gcc-11.2.0-bootstrap/configure <span class="se">\</span>
+  <span class="nt">--prefix</span><span class="o">=</span><span class="s1">''</span> <span class="se">\</span>
+  <span class="nt">--with-sysroot</span><span class="o">=</span><span class="s1">'${exec_prefix}/sysroot'</span> <span class="se">\</span>
+  <span class="nt">--target</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TARGET_TRIPLET</span><span class="s2">"</span> <span class="se">\</span>
+  <span class="nt">--enable-initfini-array</span> <span class="se">\</span>
+  <span class="nt">--enable-languages</span><span class="o">=</span>c <span class="se">\</span>
+  <span class="nt">--without-headers</span> <span class="se">\</span>
+  <span class="nt">--with-newlib</span> <span class="se">\</span>
+  <span class="nt">--disable-gcov</span> <span class="se">\</span>
+  <span class="nt">--disable-threads</span> <span class="se">\</span>
+  <span class="nt">--disable-shared</span> <span class="se">\</span>
+  <span class="nt">--disable-libada</span> <span class="se">\</span>
+  <span class="nt">--disable-libssp</span> <span class="se">\</span>
+  <span class="nt">--disable-libquadmath</span> <span class="se">\</span>
+  <span class="nt">--disable-libgomp</span> <span class="se">\</span>
+  <span class="nt">--disable-libatomic</span> <span class="se">\</span>
+  <span class="nt">--disable-libstdcxx</span> <span class="se">\</span>
+  <span class="nt">--disable-libvtv</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">--prefix</code> and <code class="language-plaintext highlighter-rouge">--with-sysroot</code> have the same meanings and implications
+as for binutils, so we won’t repeat them here. It’s important to use the
+same values used for binutils, otherwise the two sets of tools will have
+different ideas about were to install things when <code class="language-plaintext highlighter-rouge">make install</code> is
+called and will look for libraries in different places.  <code class="language-plaintext highlighter-rouge">--target</code> and
+<code class="language-plaintext highlighter-rouge">--enable-initfini-array</code> also work the same as before.</p>
+
+<p><code class="language-plaintext highlighter-rouge">--enable-languages</code> is new and tells GCC which languages should be
+supported. Remember that GCC means “GNU Compiler Collection”, because it
+supports more than just C and C++. However, the bootstrap compiler will
+only ever be used to build glibc, which is written in C, so there’s no
+reason to enable more languages for now.</p>
+
+<p><code class="language-plaintext highlighter-rouge">--without-headers</code> and <code class="language-plaintext highlighter-rouge">--with-newlib</code> are the two options that make
+the magic of disabling GCC’s reliance on a preexisting target C library.
+If we look inside <code class="language-plaintext highlighter-rouge">gcc-11.2.0/gcc/configure</code>:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># If this is a cross-compiler that does not</span>
+<span class="c"># have its own set of headers then define</span>
+<span class="c"># inhibit_libc</span>
+
+<span class="c"># If this is using newlib, without having the headers available now,</span>
+<span class="c"># then define inhibit_libc in LIBGCC2_CFLAGS.</span>
+<span class="c"># This prevents libgcc2 from containing any code which requires libc</span>
+<span class="c"># support.</span>
+: <span class="k">${</span><span class="nv">inhibit_libc</span><span class="p">=false</span><span class="k">}</span>
+<span class="k">if</span> <span class="o">{</span> <span class="o">{</span> <span class="nb">test </span>x<span class="nv">$host</span> <span class="o">!=</span> x<span class="nv">$target</span> <span class="o">&amp;&amp;</span> <span class="nb">test</span> <span class="s2">"x</span><span class="nv">$with_sysroot</span><span class="s2">"</span> <span class="o">=</span> x <span class="p">;</span> <span class="o">}</span> <span class="o">||</span>
+       <span class="nb">test </span>x<span class="nv">$with_newlib</span> <span class="o">=</span> xyes <span class="p">;</span> <span class="o">}</span> <span class="o">&amp;&amp;</span>
+     <span class="o">{</span> <span class="nb">test</span> <span class="s2">"x</span><span class="nv">$with_headers</span><span class="s2">"</span> <span class="o">=</span> xno <span class="o">||</span> <span class="nb">test</span> <span class="o">!</span> <span class="nt">-f</span> <span class="s2">"</span><span class="nv">$target_header_dir</span><span class="s2">/stdio.h"</span><span class="p">;</span> <span class="o">}</span> <span class="p">;</span> <span class="k">then
+       </span><span class="nv">inhibit_libc</span><span class="o">=</span><span class="nb">true
+</span><span class="k">fi</span>
+</code></pre></div></div>
+
+<p>Note that we are <em>not</em> going to use the <em>newlib</em> C library: we’ll stick
+to glibc. But the option is still required to eliminate dependencies on
+the (yet to be built) C library.</p>
+
+<p>Finally, the various <code class="language-plaintext highlighter-rouge">--disable-*</code> options turn off features we don’t
+want (or can’t) build yet.</p>
+
+<p>Now start the build:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make <span class="nt">-j</span><span class="sb">`</span><span class="nb">nproc</span><span class="sb">`</span> all-gcc all-target-libgcc
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">all-gcc</code> and <code class="language-plaintext highlighter-rouge">all-target-libgcc</code> are Makefile targets. They need to be
+specified so that only the parts of GCC we actually need are built,
+cutting the build time.</p>
+
+<p>This time, we will not install the compiler under <code class="language-plaintext highlighter-rouge">$TOOLS</code>, but in a
+separate <code class="language-plaintext highlighter-rouge">bootstrap</code> directory. Since this is going to be thrown away as
+soon as the final compiler is build, we don’t want to risk polluting the
+final location with leftovers.</p>
+
+<p>However, under <code class="language-plaintext highlighter-rouge">bootstrap</code> there is no <code class="language-plaintext highlighter-rouge">sysroot</code> folder: creating
+a symlink to the one under <code class="language-plaintext highlighter-rouge">tools</code> gives the bootstrap compiler the
+same view of the sysroot as the binutils. At the same time, we want to
+create <code class="language-plaintext highlighter-rouge">sysroot</code> under <code class="language-plaintext highlighter-rouge">$TOOLS</code>, since we haven’t done it already and no
+files has been placed there by a <code class="language-plaintext highlighter-rouge">make install</code>. Finally, we also need
+to create a link <code class="language-plaintext highlighter-rouge">$TARGET_TRIPLET</code> under <code class="language-plaintext highlighter-rouge">bootstrap</code>, pointing to
+the folder where the binutils are installed. This is
+<a href="https://gcc.gnu.org/install/build.html">required</a> by GCC to properly locate the assembler and the
+linker:</p>
+
+<blockquote>
+  <p>If you are not building GNU binutils in the same source tree as GCC, you
+will need a cross-assembler and cross-linker installed before
+configuring GCC. Put them in the directory prefix/target/bin.</p>
+</blockquote>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">mkdir</span> <span class="nt">-p</span> <span class="s2">"</span><span class="nv">$SYSROOT</span><span class="s2">"</span>
+<span class="nb">mkdir</span> <span class="nt">-p</span> <span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">/../bootstrap"</span>
+<span class="nb">ln</span> <span class="nt">-sf</span> <span class="s2">"</span><span class="nv">$SYSROOT</span><span class="s2">"</span> <span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">/../bootstrap/sysroot"</span>
+<span class="nb">ln</span> <span class="nt">-sf</span> <span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">/</span><span class="nv">$TARGET_TRIPLET</span><span class="s2">"</span> <span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">/../bootstrap/</span><span class="nv">$TARGET_TRIPLET</span><span class="s2">"</span>
+</code></pre></div></div>
+
+<p>Now install the files:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make install-gcc install-target-libgcc <span class="nv">DESTDIR</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">/../bootstrap"</span>
+</code></pre></div></div>
+
+<p>Confirm that the bootstrap compiler recognizes the sysroot:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$TOOLS</span>/../bootstrap/bin/arm-none-linux-gnueabihf-gcc <span class="nt">-print-sysroot</span>
+
+<span class="c"># It should output something like:</span>
+<span class="c"># /home/manu/projects/embedded/mytoolchain/bootstrap/bin/../sysroot</span>
+</code></pre></div></div>
+
+<p>Now we are ready to move to building glibc. But before that, we need to
+extract the kernel headers.</p>
+
+<h2 id="extract-the-kernel-headers">
+<a class="anchor" href="#extract-the-kernel-headers" aria-hidden="true"><span class="octicon octicon-link"></span></a>Extract the kernel headers</h2>
+
+<p>First we need to ensure we have rsync installed, as it is used by the
+build system to copy things:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>pacman <span class="nt">-S</span> <span class="nt">--noconfirm</span> <span class="nt">--needed</span> rsync
+</code></pre></div></div>
+
+<p>Then proceed:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cd</span> <span class="nv">$CROSSDIR</span>/mytoolchain/sources/linux
+<span class="nb">tar</span> <span class="nt">-xf</span> linux-5.15.7.tar.xz
+<span class="nb">cd </span>linux-5.15.7
+
+make mrproper
+make headers_install <span class="nv">INSTALL_HDR_PATH</span><span class="o">=</span><span class="s2">"</span><span class="nv">$SYSROOT</span><span class="s2">/usr"</span>
+</code></pre></div></div>
+
+<p>This step is simpler that the others: there is not <code class="language-plaintext highlighter-rouge">build</code>
+directory because with Linux we do things in-tree.</p>
+
+<p><code class="language-plaintext highlighter-rouge">make mrproper</code> ensures that the kernel tree is clean, without leftover
+files from previous builds. Technically, we have just unpacked it so
+there should be nothing to clean, but LFS recommends this step just in
+case something has slipped through the packaging.</p>
+
+<p><code class="language-plaintext highlighter-rouge">make headers_install INSTALL_HDR_PATH="$SYSROOT/usr"</code> places the
+headers under <code class="language-plaintext highlighter-rouge">$SYSROOT/usr/include</code> (the <code class="language-plaintext highlighter-rouge">include</code> is added
+automatically). The kernel headers are the first thing placed under the
+sysroot, as they belong to the target system, and according to the
+<a href="https://en.wikipedia.org/wiki/Filesystem_Hierarchy_Standard">Filesystem Hierarchy Standard</a>, system include files should go
+under <code class="language-plaintext highlighter-rouge">/usr/include</code>.</p>
+
+<p>The commands above don’t show an important element: in order to
+extract headers for the appropriate target architecture, the kernel
+build system looks for an <code class="language-plaintext highlighter-rouge">ARCH</code> variable. We didn’t explicitly pass
+one, however, because it is already defined in our environment via
+<code class="language-plaintext highlighter-rouge">activate.bash</code>. <code class="language-plaintext highlighter-rouge">ARCH</code> is a convention used by many tools (the kernel,
+U-Boot, BusyBox among others) and by placing it in the environment we
+can’t forget it.</p>
+
+<h2 id="build-glibc">
+<a class="anchor" href="#build-glibc" aria-hidden="true"><span class="octicon octicon-link"></span></a>Build glibc</h2>
+
+<p>Ensure your python is up to date, as glibc’s build systems checks for
+this:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>pacman <span class="nt">-S</span> <span class="nt">--needed</span> <span class="nt">--noconfirm</span> python
+</code></pre></div></div>
+
+<p>Unpack and configure:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cd</span> <span class="nv">$CROSSDIR</span>/mytoolchain/sources/glibc
+<span class="nb">tar</span> <span class="nt">-xf</span> glibc-2.34.tar.xz
+<span class="nb">mkdir</span> <span class="nt">-p</span> build
+<span class="nb">cd </span>build
+
+<span class="o">(</span>
+  <span class="nv">PATH</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">/../bootstrap/bin:</span><span class="nv">$PATH</span><span class="s2">"</span>
+
+  <span class="c"># Configure</span>
+  ../glibc-2.34/configure <span class="se">\</span>
+    <span class="nt">--prefix</span><span class="o">=</span>/usr <span class="se">\</span>
+    <span class="nt">--host</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TARGET_TRIPLET</span><span class="s2">"</span> <span class="se">\</span>
+    <span class="nt">--build</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOST_TRIPLET</span><span class="s2">"</span> <span class="se">\</span>
+    <span class="nt">--with-headers</span><span class="o">=</span><span class="s2">"</span><span class="nv">$SYSROOT</span><span class="s2">/usr/include"</span> <span class="se">\</span>
+    <span class="nt">--enable-kernel</span><span class="o">=</span>3.2
+
+  <span class="c"># Build</span>
+  make <span class="nt">-j</span><span class="sb">`</span><span class="nb">nproc</span><span class="sb">`</span> <span class="nv">CXX</span><span class="o">=</span><span class="s1">''</span>
+
+  <span class="c"># Install</span>
+  make <span class="nb">install </span><span class="nv">DESTDIR</span><span class="o">=</span><span class="s2">"</span><span class="nv">$SYSROOT</span><span class="s2">"</span> <span class="nv">CXX</span><span class="o">=</span><span class="s1">''</span>
+<span class="o">)</span>
+</code></pre></div></div>
+
+<p>First, note that we are injecting a modified <code class="language-plaintext highlighter-rouge">PATH</code> into the
+environment. This is required to find the bootstrap compiler, since the
+<code class="language-plaintext highlighter-rouge">bootstrap/bin</code> folder is not in our default <code class="language-plaintext highlighter-rouge">PATH</code>.</p>
+
+<p>Unlike previous components, glibc’s prefix is <code class="language-plaintext highlighter-rouge">/usr</code>. Again, glibc is a
+target library, so its expected installation path is under the
+root filesystem of the target system, which is what it will see at
+runtime.</p>
+
+<p><code class="language-plaintext highlighter-rouge">--host</code> and <code class="language-plaintext highlighter-rouge">--build</code> control the actual cross-compilation. There is no
+<code class="language-plaintext highlighter-rouge">--target</code>, because glibc does not emit code for a platform, it <em>runs</em>
+on a platform, the <em>host</em>, which needs to be set to the triplet of the
+target ARM system. <code class="language-plaintext highlighter-rouge">--build</code>, conversely, specifies the system used for
+the build, which is our current x86-64 machine.</p>
+
+<p><code class="language-plaintext highlighter-rouge">--with-headers</code> merely specifies where the kernel headers are to be
+found. <code class="language-plaintext highlighter-rouge">--enable-kernel</code> defines the <em>lowest</em> Linux kernel version that
+this C library will support. The higher the version, the faster and
+smaller the code becomes, because it does not need to cater to older
+kernels and can drop compatibility stuff. But it also means that if you
+ever try to run an application linked against this glibc on a system
+whose running kernel is lower than <code class="language-plaintext highlighter-rouge">--enable-kernel</code>, all you get is an
+abort. The value <code class="language-plaintext highlighter-rouge">3.2</code> is the lowest version still supported by glibc
+2.34, which means we are compiling for the widest range of kernels, at
+the expense of the largest compatibility bloat.</p>
+
+<p>When doing <code class="language-plaintext highlighter-rouge">make</code> and <code class="language-plaintext highlighter-rouge">make install</code>, there’s an extra <code class="language-plaintext highlighter-rouge">CXX=''</code>
+variable. If you skim through the output of configure, you’ll notice a
+warning message saying that the cross-<code class="language-plaintext highlighter-rouge">g++</code> was found without a target
+prefix. What is actually happening is that, since with didn’t enable C++
+for the bootstrap compiler, there is no <code class="language-plaintext highlighter-rouge">g++</code> under <code class="language-plaintext highlighter-rouge">bootstrap</code>, and the
+build system ends up finding the <code class="language-plaintext highlighter-rouge">g++</code> that is installed on the host,
+typically at <code class="language-plaintext highlighter-rouge">/usr/bin/g++</code>. Of course, this compiler cannot handle ARM
+code. So when actually calling <code class="language-plaintext highlighter-rouge">make</code> we override this selection with an
+empty value, causing some Makefile code to behave as if no C++ compiler
+is installed. This is required to avoid the build phase trying to
+compile a C++ file, <code class="language-plaintext highlighter-rouge">./glibc-2.34/support/links-dso-program.cc</code>,
+which also has a C equivalent
+<code class="language-plaintext highlighter-rouge">./glibc-2.34/support/links-dso-program-c.c</code> that will be used instead.</p>
+
+<p>With glibc installed, the last step is to build the final GCC. Before
+that, however, we can get rid of the bootstrap compiler, as its work is
+over:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">rm</span> <span class="nt">-rf</span> <span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">/../bootstrap"</span>
+</code></pre></div></div>
+
+<h2 id="build-the-final-gcc">
+<a class="anchor" href="#build-the-final-gcc" aria-hidden="true"><span class="octicon octicon-link"></span></a>Build the final GCC</h2>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cd</span> <span class="nv">$CROSSDIR</span>/mytoolchain/sources/gcc
+<span class="nb">tar</span> <span class="nt">-xf</span> gcc-11.2.0.tar.xz
+<span class="nb">mv </span>gcc-11.2.0<span class="o">{</span>,-final<span class="o">}</span>
+<span class="nb">mkdir</span> <span class="nt">-p</span> build-final
+<span class="nb">cd </span>build-final
+
+../gcc-11.2.0-final/configure <span class="se">\</span>
+  <span class="nt">--prefix</span><span class="o">=</span><span class="s1">''</span> <span class="se">\</span>
+  <span class="nt">--target</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TARGET_TRIPLET</span><span class="s2">"</span> <span class="se">\</span>
+  <span class="nt">--with-sysroot</span><span class="o">=</span><span class="s1">'${exec_prefix}/sysroot'</span> <span class="se">\</span>
+  <span class="nt">--with-build-sysroot</span><span class="o">=</span><span class="s2">"</span><span class="nv">$SYSROOT</span><span class="s2">"</span> <span class="se">\</span>
+  <span class="nt">--enable-languages</span><span class="o">=</span>c,c++ <span class="se">\</span>
+  <span class="nt">--enable-initfini-array</span>
+</code></pre></div></div>
+
+<p>Most options should be familiar by now. This time we also enable C++
+support and the <code class="language-plaintext highlighter-rouge">--disable-*</code> options are gone as we want to build the
+full thing. The only new stuff is <code class="language-plaintext highlighter-rouge">--with-build-sysroot</code>, which points
+to the full path of our sysroot. As per the docs, a build sysroot works
+just like a sysroot, but it is only used while building GCC itself, it
+is <em>not</em> remembered by the final cross-compiler. The reason we need this
+is allowing the build system to properly find include files and
+libraries under the sysroot even if the value of <code class="language-plaintext highlighter-rouge">--with-sysroot</code> does
+not make sense during the build.  Without this option, the build will
+fail with errors claiming that header files cannot be found under
+<code class="language-plaintext highlighter-rouge">/sysroot/usr/include</code>. GCC is smart enough to compute the absolute path
+to the sysroot using its own executable path, but the build system is
+not.</p>
+
+<p>Now build and install:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make <span class="nt">-j</span><span class="sb">`</span><span class="nb">nproc</span><span class="sb">`</span>
+make <span class="nb">install </span><span class="nv">DESTDIR</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">"</span>
+</code></pre></div></div>
+
+<p>Congrats! This was the last step. Now let’s try out the cross compiler.</p>
+
+<h2 id="test-the-cross-toolchain">
+<a class="anchor" href="#test-the-cross-toolchain" aria-hidden="true"><span class="octicon octicon-link"></span></a>Test the cross-toolchain</h2>
+
+<p>To test the cross toolchain, we’ll build a totally nonsensical C++ app
+that calls both some C and C++ functions and uses exceptions to simply
+print a string, basically to exert C, C++ features and stack unwinding.
+Then we’ll use qemu to see if it runs.</p>
+
+<p>Install qemu for ARM:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">sudo </span>pacman <span class="nt">-S</span> <span class="nt">--needed</span> <span class="nt">--noconfirm</span> qemu-arch-extra
+</code></pre></div></div>
+
+<p>Place the following code into a <code class="language-plaintext highlighter-rouge">test.cc</code> file:</p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;unistd.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;sys/utsname.h&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;iostream&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;stdexcept&gt;</span><span class="cp">
+</span>
+<span class="c1">// A couple of functions</span>
+<span class="kt">void</span> <span class="nf">func1</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">throw</span> <span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span><span class="p">(</span><span class="s">"Hello crossworld"</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="n">func</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">try</span> <span class="p">{</span>
+    <span class="n">func1</span><span class="p">();</span>
+  <span class="p">}</span> <span class="k">catch</span> <span class="p">(...)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"%s</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="s">"Hello crossworld from C"</span><span class="p">);</span>
+    <span class="k">throw</span><span class="p">;</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="p">{</span><span class="mi">0</span><span class="p">};</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">try</span> <span class="p">{</span>
+      <span class="n">func</span><span class="p">();</span>
+    <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="k">const</span> <span class="n">std</span><span class="o">::</span><span class="n">runtime_error</span> <span class="o">&amp;</span><span class="n">e</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="n">e</span><span class="p">.</span><span class="n">what</span><span class="p">()</span> <span class="o">&lt;&lt;</span> <span class="s">" from C++ too!"</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="k">struct</span> <span class="nc">utsname</span> <span class="n">un</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">uname</span><span class="p">(</span><span class="o">&amp;</span><span class="n">un</span><span class="p">))</span> <span class="p">{</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">"This little show was hosted by "</span> <span class="o">&lt;&lt;</span> <span class="n">un</span><span class="p">.</span><span class="n">machine</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Build the code and run it:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Dynamically linked build</span>
+arm-none-linux-gnueabihf-g++ <span class="nt">-o</span> <span class="nb">test </span>test.cc
+
+qemu-arm <span class="nt">-L</span> <span class="s2">"</span><span class="nv">$SYSROOT</span><span class="s2">"</span> <span class="nt">-E</span> <span class="nv">LD_LIBRARY_PATH</span><span class="o">=</span><span class="s2">"</span><span class="nv">$TOOLS</span><span class="s2">/</span><span class="nv">$TARGET_TRIPLET</span><span class="s2">/lib"</span> ./test
+
+<span class="c"># You should see:</span>
+<span class="c">#</span>
+<span class="c"># Hello crossworld from C</span>
+<span class="c"># Hello crossworld from C++ too!</span>
+<span class="c"># Hello crossworld from C</span>
+<span class="c"># Hello crossworld from C++ too!</span>
+<span class="c"># Hello crossworld from C</span>
+<span class="c"># Hello crossworld from C++ too!</span>
+<span class="c"># Hello crossworld from C</span>
+<span class="c"># Hello crossworld from C++ too!</span>
+<span class="c"># Hello crossworld from C</span>
+<span class="c"># Hello crossworld from C++ too!</span>
+<span class="c"># This little show was hosted by armv7l</span>
+
+<span class="c"># Same code, static build</span>
+arm-none-linux-gnueabihf-g++ <span class="nt">-static</span> <span class="nt">-o</span> <span class="nb">test </span>test.cc
+
+qemu-arm ./test
+<span class="c"># Same output as above</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">-L</code> tells qemu where to find the dynamic linker for the ARM platform,
+while <code class="language-plaintext highlighter-rouge">-E</code> adds an <code class="language-plaintext highlighter-rouge">LD_LIBRARY_PATH</code> to the environment of our new
+process, which the dynamic linker can use to locate the standard C++
+library (without that you’d get an error about loading <code class="language-plaintext highlighter-rouge">libstdc++.so.6</code>).
+Such switches are not needed for the static build.</p>
+
+<!-- Links -->
+
+  </div>
+
+  <script src="https://utteranc.es/client.js"
+     repo="binary-manu/binary-is-better"
+     issue-term="pathname"
+     label="comment"
+     theme="preferred-color-scheme"
+     crossorigin="anonymous"
+     async>
+  </script>
+
+  <a class="u-url" href="/binary-is-better/elf/arm-cross-toolchain-from-scratch" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/binary-is-better/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Binary is better</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Emanuele Giacomelli</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <a rel="license" href="http://creativecommons.org/licenses/by/3.0/">
+          <img alt="Creative Commons License" style="border-width:0"
+            src="https://i.creativecommons.org/l/by/3.0/88x31.png">
+        </a><ul class="social-media-list"></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Personal notes about my software developer things</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

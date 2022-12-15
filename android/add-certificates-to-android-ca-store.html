@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Add a root CA certificate to Android CA store | Binary is better</title>
+<meta name="generator" content="Jekyll v4.3.1" />
+<meta property="og:title" content="Add a root CA certificate to Android CA store" />
+<meta name="author" content="Emanuele Giacomelli" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="While trying to add a missing root CA certificate to my Android phone, I stumbled into this blog post." />
+<meta property="og:description" content="While trying to add a missing root CA certificate to my Android phone, I stumbled into this blog post." />
+<link rel="canonical" href="http://localhost:4000/binary-is-better/android/add-certificates-to-android-ca-store" />
+<meta property="og:url" content="http://localhost:4000/binary-is-better/android/add-certificates-to-android-ca-store" />
+<meta property="og:site_name" content="Binary is better" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-06-07T00:00:00+02:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Add a root CA certificate to Android CA store" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2020-06-07T00:00:00+02:00","datePublished":"2020-06-07T00:00:00+02:00","description":"While trying to add a missing root CA certificate to my Android phone, I stumbled into this blog post.","headline":"Add a root CA certificate to Android CA store","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/binary-is-better/android/add-certificates-to-android-ca-store"},"url":"http://localhost:4000/binary-is-better/android/add-certificates-to-android-ca-store"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/binary-is-better/feed.xml" title="Binary is better" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/binary-is-better/">Binary is better</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/binary-is-better/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Add a root CA certificate to Android CA store</h1>
+    <p class="post-meta">
+      
+      <time class="dt-published" datetime="2020-06-07T00:00:00+02:00" itemprop="datePublished">Published Jun 7, 2020
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <ul id="toc" class="section-nav">
+</ul><p>While trying to add a missing root CA certificate to my Android phone,
+I stumbled into <a href="https://ivrodriguez.com/installing-self-signed-certificates-on-android/">this blog post</a>.</p>
+
+<p>To sum it up, to add a new root CA to your Android system, you have to:</p>
+
+<ol>
+  <li>save the certificate to a file in PEM format;</li>
+  <li>give the file a specific name, derived by hashing the subject’s
+distinguished name;</li>
+  <li>copy this file to Android under <code class="language-plaintext highlighter-rouge">/system/etc/security/cacerts/</code>.</li>
+</ol>
+
+<p>The culprit is point 2, as giving the file any other name will not work.
+In particular, it will still show up under Android’s credential list,
+but applications will <em>not</em> be able to use it.  In order to obtain the
+correct file name one can use <code class="language-plaintext highlighter-rouge">openssl</code> to compute the <em>subject hash</em>,
+as pointed by the referenced article:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>HASH=$(openssl x509 -subject_hash -in mycert.pem | head -1)
+</code></pre></div></div>
+
+<p>After that, the file should be renamed to <code class="language-plaintext highlighter-rouge">${HASH}.0</code>. So, if the
+<code class="language-plaintext highlighter-rouge">openssl</code> invocation yielded <code class="language-plaintext highlighter-rouge">1234ABCD</code>, the file should be named
+<code class="language-plaintext highlighter-rouge">1234ABCD.0</code>.</p>
+
+<p>It tried exactly this, and it didn’t work.</p>
+
+<p>It turns out that the algorithm used to compute the subject hash has
+<a href="https://www.openssl.org/news/changelog.html#openssl-100">changed</a> in OpenSSL 1.0.0. The <code class="language-plaintext highlighter-rouge">-subject_hash</code>
+option now uses the new algorithm, while the previous implementation can
+still be accessed using <code class="language-plaintext highlighter-rouge">-subject_hash_old</code>.</p>
+
+<p>On my phone, certificates are named after the <em>old</em> hash, but the
+OpenSSL version I was using to generate them was higher than 1.0.0.
+Therefore, the name was actually incorrect and the certificate wasn’t
+found.</p>
+
+<p>It is pretty easy to fix the command to generate old-style hashes:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>HASH=$(openssl x509 -subject_hash_old -in mycert.pem | head -1)
+</code></pre></div></div>
+
+<p>A surefire way to check if you are generating names correctly is to grab
+one certificate from your phone store and calculate its hash. If the
+generated value doesn’t match the file name, you need to switch
+algorithm in OpenSSL invocation.</p>
+
+<!-- Links -->
+
+  </div>
+
+  <script src="https://utteranc.es/client.js"
+     repo="binary-manu/binary-is-better"
+     issue-term="pathname"
+     label="comment"
+     theme="preferred-color-scheme"
+     crossorigin="anonymous"
+     async>
+  </script>
+
+  <a class="u-url" href="/binary-is-better/android/add-certificates-to-android-ca-store" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/binary-is-better/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Binary is better</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Emanuele Giacomelli</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <a rel="license" href="http://creativecommons.org/licenses/by/3.0/">
+          <img alt="Creative Commons License" style="border-width:0"
+            src="https://i.creativecommons.org/l/by/3.0/88x31.png">
+        </a><ul class="social-media-list"></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Personal notes about my software developer things</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

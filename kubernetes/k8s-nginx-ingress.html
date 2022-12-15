@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>A hands-on introduction to the K8S NGINX ingress feat. Minikube | Binary is better</title>
+<meta name="generator" content="Jekyll v4.3.1" />
+<meta property="og:title" content="A hands-on introduction to the K8S NGINX ingress feat. Minikube" />
+<meta name="author" content="Emanuele Giacomelli" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="This article is a simple hands-on step-by-step guide about settings up the NGINX ingress on a K8S cluster. For our tests, I’ll be using a Minikube cluster on an Arch Linux system, plus Helm for installing charts." />
+<meta property="og:description" content="This article is a simple hands-on step-by-step guide about settings up the NGINX ingress on a K8S cluster. For our tests, I’ll be using a Minikube cluster on an Arch Linux system, plus Helm for installing charts." />
+<link rel="canonical" href="http://localhost:4000/binary-is-better/kubernetes/k8s-nginx-ingress" />
+<meta property="og:url" content="http://localhost:4000/binary-is-better/kubernetes/k8s-nginx-ingress" />
+<meta property="og:site_name" content="Binary is better" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-11-29T00:00:00+01:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="A hands-on introduction to the K8S NGINX ingress feat. Minikube" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2020-11-29T00:00:00+01:00","datePublished":"2020-11-29T00:00:00+01:00","description":"This article is a simple hands-on step-by-step guide about settings up the NGINX ingress on a K8S cluster. For our tests, I’ll be using a Minikube cluster on an Arch Linux system, plus Helm for installing charts.","headline":"A hands-on introduction to the K8S NGINX ingress feat. Minikube","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/binary-is-better/kubernetes/k8s-nginx-ingress"},"url":"http://localhost:4000/binary-is-better/kubernetes/k8s-nginx-ingress"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/binary-is-better/feed.xml" title="Binary is better" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/binary-is-better/">Binary is better</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/binary-is-better/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">A hands-on introduction to the K8S NGINX ingress feat. Minikube</h1>
+    <p class="post-meta">
+      
+      <time class="dt-published" datetime="2020-11-29T00:00:00+01:00" itemprop="datePublished">Published Nov 29, 2020
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <ul id="toc" class="section-nav">
+<li class="toc-entry toc-h2"><a href="#setting-up-minikube">Setting up Minikube</a></li>
+<li class="toc-entry toc-h2"><a href="#install-the-nginx-ingress">Install the NGINX ingress</a></li>
+<li class="toc-entry toc-h2"><a href="#deploy-a-test-service-to-act-as-our-traffic-target">Deploy a test service to act as our traffic target</a></li>
+<li class="toc-entry toc-h2"><a href="#access-the-service-via-the-ingress">Access the service via the ingress</a>
+<ul>
+<li class="toc-entry toc-h3"><a href="#filter-on-host-names">Filter on host names</a></li>
+<li class="toc-entry toc-h3"><a href="#adding-tls">Adding TLS</a></li>
+<li class="toc-entry toc-h3"><a href="#the-bad-certificate">The “bad” certificate</a></li>
+<li class="toc-entry toc-h3"><a href="#the-good-certificate">The “good” certificate</a></li>
+</ul>
+</li>
+<li class="toc-entry toc-h2"><a href="#tcp-passthrough">TCP passthrough</a></li>
+<li class="toc-entry toc-h2"><a href="#thats-all">That’s all</a></li>
+</ul><p>This article is a simple hands-on step-by-step guide about settings up
+the NGINX ingress on a K8S cluster.  For our tests, I’ll be using a
+Minikube cluster on an Arch Linux system, plus Helm for installing
+charts.</p>
+
+<h2 id="setting-up-minikube">
+<a class="anchor" href="#setting-up-minikube" aria-hidden="true"><span class="octicon octicon-link"></span></a>Setting up Minikube</h2>
+
+<p>Arch provides packages for all the needed tools, so we can simply
+install them via:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span><span class="nb">sudo </span>pacman <span class="nt">-S</span> <span class="nt">--needed</span> <span class="nt">--noconfirm</span> minikube kubectl helm
+</code></pre></div></div>
+
+<p>In case another distribution is in use, you can get the latest binaries from
+their release pages:</p>
+<ul>
+  <li><a href="https://github.com/helm/helm/releases">Helm</a></li>
+  <li><a href="https://github.com/kubernetes/kubectl/releases">Kubectl</a></li>
+  <li><a href="https://github.com/kubernetes/minikube/releases">Minikube</a></li>
+</ul>
+
+<p>This is especially important if your distro comes with older versions of
+these tools, as some options have been deprecated in recent releases.
+As a rule, I will use command switches which are non-deprecated in the
+latest releases available in Arch at the time of writing:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>minikube version
+minikube version: v1.15.1
+commit: 23f40a012abb52eff365ff99a709501a61ac5876-dirty
+
+<span class="nv">$ </span>kubectl version <span class="nt">--client</span><span class="o">=</span><span class="nb">true
+</span>Client Version: version.Info<span class="o">{</span>Major:<span class="s2">"1"</span>, Minor:<span class="s2">"19"</span>, GitVersion:<span class="s2">"v1.19.4"</span>, GitCommit:<span class="s2">"d360454c9bcd1634cf4cc52d1867af5491dc9c5f"</span>, GitTreeState:<span class="s2">"archive"</span>, BuildDate:<span class="s2">"2020-11-25T13:19:56Z"</span>, GoVersion:<span class="s2">"go1.15.5"</span>, Compiler:<span class="s2">"gc"</span>, Platform:<span class="s2">"linux/amd64"</span><span class="o">}</span>
+
+<span class="nv">$ </span>helm version
+version.BuildInfo<span class="o">{</span>Version:<span class="s2">"v3.4.1"</span>, GitCommit:<span class="s2">"c4e74854886b2efe3321e185578e6db9be0a6e29"</span>, GitTreeState:<span class="s2">"clean"</span>, GoVersion:<span class="s2">"go1.15.4"</span><span class="o">}</span>
+</code></pre></div></div>
+
+<p>Of course, components which have version relationships must be able to
+interwork.  <code class="language-plaintext highlighter-rouge">kubectl</code> and the K8S API server have <a href="https://kubernetes.io/docs/setup/release/version-skew-policy/#kubectl">version
+constraints</a> with respect to one another, so
+one cannot simply choose random versions. To keep it simple, we will ask
+Minikube to install a K8S cluster following the same version as our
+local <code class="language-plaintext highlighter-rouge">kubectl</code>.</p>
+
+<p><em>NOTE 1: some terminal output snippets produced by <code class="language-plaintext highlighter-rouge">minikube</code> contain
+emojis. Be sure to have a font that can render them on your system. On
+Arch Linux, installing <code class="language-plaintext highlighter-rouge">noto-fonts-emoji</code> from the AUR suffices.</em></p>
+
+<p><em>NOTE 2: in the examples below, the <code class="language-plaintext highlighter-rouge">kvm2</code> Minikube backend is used to
+create a VM that hosts the K8S cluster, backed by <code class="language-plaintext highlighter-rouge">libvirt</code> and <code class="language-plaintext highlighter-rouge">qemu</code>.
+Minikube supports other backends, so if <code class="language-plaintext highlighter-rouge">kvm2</code> does not work on your
+systemm you may try requesting a different backend os just omit the
+<code class="language-plaintext highlighter-rouge">--driver</code> options to let Minikube choose one based on what is
+installed. If no backend works out of the box, installing <code class="language-plaintext highlighter-rouge">libvirt</code> can
+fix the issue. Arch users may refer to <a href="https://wiki.archlinux.org/index.php/Libvirt">this ArchWiki
+page</a>.  OpenSUSE users may refer to <a href="https://doc.opensuse.org/documentation/leap/virtualization/html/book.virt/cha-vt-installation.html#sec-vt-installation-kvm">this
+page</a>.</em></p>
+
+<p>Let’s start a Minkube cluster:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ K8S_VERSION</span><span class="o">=</span><span class="si">$(</span>kubectl version <span class="nt">--client</span><span class="o">=</span><span class="nb">true</span> |
+    <span class="nb">sed</span> <span class="nt">-E</span> <span class="s1">'s/.*GitVersion:"([^"]+)".*/\1/'</span><span class="si">)</span>
+<span class="nv">$ </span><span class="nb">echo</span> <span class="nv">$K8S_VERSION</span> 
+v1.19.4
+<span class="nv">$ </span>minikube start <span class="nt">--driver</span><span class="o">=</span>kvm2 <span class="nt">--kubernetes-version</span><span class="o">=</span><span class="s2">"</span><span class="nv">$K8S_VERSION</span><span class="s2">"</span>
+😄  minikube v1.15.1 on Arch 
+✨  Using the kvm2 driver based on user configuration
+💾  Downloading driver docker-machine-driver-kvm2:
+    <span class="o">&gt;</span> docker-machine-driver-kvm2.sha256: 65 B / 65 B <span class="o">[</span><span class="nt">-------</span><span class="o">]</span> 100.00% ? p/s 0s
+    <span class="o">&gt;</span> docker-machine-driver-kvm2: 13.56 MiB / 13.56 MiB  100.00% 557.48 KiB p/s
+💿  Downloading VM boot image ...
+    <span class="o">&gt;</span> minikube-v1.15.0.iso.sha256: 65 B / 65 B <span class="o">[</span><span class="nt">-------------</span><span class="o">]</span> 100.00% ? p/s 0s
+    <span class="o">&gt;</span> minikube-v1.15.0.iso: 181.00 MiB / 181.00 MiB <span class="o">[]</span> 100.00% 9.23 MiB p/s 20s
+👍  Starting control plane node minikube <span class="k">in </span>cluster minikube
+💾  Downloading Kubernetes v1.19.4 preload ...
+    <span class="o">&gt;</span> preloaded-images-k8s-v6-v1.19.4-docker-overlay2-amd64.tar.lz4: 486.35 MiB
+🔥  Creating kvm2 VM <span class="o">(</span><span class="nv">CPUs</span><span class="o">=</span>2, <span class="nv">Memory</span><span class="o">=</span>4000MB, <span class="nv">Disk</span><span class="o">=</span>20000MB<span class="o">)</span> ...
+🐳  Preparing Kubernetes v1.19.4 on Docker 19.03.13 ...
+🔎  Verifying Kubernetes components...
+🌟  Enabled addons: storage-provisioner, default-storageclass
+🏄  Done! kubectl is now configured to use <span class="s2">"minikube"</span> cluster and <span class="s2">"default"</span> namespace by default
+</code></pre></div></div>
+
+<p>At this point, the cluster is up but the NGINX ingress is not installed
+by default. This is true in general for Minikube clusters as well as
+for clusters installed via <code class="language-plaintext highlighter-rouge">kubeadm</code>. Other cluster deployment methods
+may install it automatically.</p>
+
+<p>As a convenience, Minikube can automatically install the ingress with a
+single command. but this is not the way we are going to do it, because
+it cannot be used for a real, bare metal, cluster setup. For reference,
+this is the command that enable Minikube’s ingress addon (don’t run
+it!):</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>minikube addons <span class="nb">enable </span>ingress
+🔎  Verifying ingress addon...
+🌟  The <span class="s1">'ingress'</span> addon is enabled
+</code></pre></div></div>
+
+<p>Well, if you <em>did</em> run it… you can simply turn it off with:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>minikube addons disable ingress
+🌑  <span class="s2">"The 'ingress' addon is disabled
+</span></code></pre></div></div>
+
+<h2 id="install-the-nginx-ingress">
+<a class="anchor" href="#install-the-nginx-ingress" aria-hidden="true"><span class="octicon octicon-link"></span></a>Install the NGINX ingress</h2>
+
+<p>Now, back to the manual installation. The <a href="https://kubernetes.github.io/ingress-nginx/deploy/#using-helm">official ingress install
+guide</a> describes how to install the ingress
+using its Helm chart. However, following those commands without
+customizing the chart values configure the ingress to expect an external
+LoadBalancer, which we don’t want to use. Also, it creates a deployment
+resource by default.</p>
+
+<p>What we want to do, instead, is to create a DaemonSet so that each worker
+gets its own ingress pod handling its incoming traffic. Also, those pods
+should listen on ports 80 and 443 on the host itself, rather than
+expecting an external LB to do it.</p>
+
+<p>Thankfully, we can set a couple of values to tell the chart to do
+exactly that:</p>
+
+<ul>
+  <li>
+<code class="language-plaintext highlighter-rouge">controller.hostPort.enabled</code> can be set to <code class="language-plaintext highlighter-rouge">true</code> to have the ingress
+listen on host ports directly;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">controller.kind</code> can be set to <code class="language-plaintext highlighter-rouge">DaemonSet</code> to override the default
+resource type.</li>
+</ul>
+
+<p>The chart will be installed to its own namespace via <code class="language-plaintext highlighter-rouge">-n</code> and we also
+ask Helm to create it for us using <code class="language-plaintext highlighter-rouge">--create-namespace</code>:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+<span class="s2">"ingress-nginx"</span> has been added to your repositories
+
+<span class="nv">$ </span>helm repo update
+Hang tight <span class="k">while </span>we grab the latest from your chart repositories...
+...Successfully got an update from the <span class="s2">"ingress-nginx"</span> chart repository
+Update Complete. ⎈Happy Helming!⎈
+
+<span class="nv">$ </span>helm <span class="nb">install</span> <span class="nt">-n</span> ingress-nginx <span class="nt">--create-namespace</span> ingress-nginx <span class="se">\</span>
+    <span class="nt">--set</span> controller.hostPort.enabled<span class="o">=</span><span class="nb">true</span> <span class="se">\</span>
+    <span class="nt">--set</span> controller.kind<span class="o">=</span>DaemonSet <span class="se">\</span>
+    ingress-nginx/ingress-nginx
+NAME: ingress-nginx
+LAST DEPLOYED: Fri Nov 27 22:25:11 2020
+NAMESPACE: ingress-nginx
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+The ingress-nginx controller has been installed.
+It may take a few minutes <span class="k">for </span>the LoadBalancer IP to be available.
+You can watch the status by running <span class="s1">'kubectl --namespace ingress-nginx get services -o wide -w ingress-nginx-controller'</span>
+<span class="o">[</span>redacted <span class="k">for </span>brevity]
+</code></pre></div></div>
+
+<h2 id="deploy-a-test-service-to-act-as-our-traffic-target">
+<a class="anchor" href="#deploy-a-test-service-to-act-as-our-traffic-target" aria-hidden="true"><span class="octicon octicon-link"></span></a>Deploy a test service to act as our traffic target</h2>
+
+<p>While we wait for the ingress to come up, we need some service to act as
+the target of out traffic.  For this, we can use a ready-made Docker
+image providing a simple static website: <code class="language-plaintext highlighter-rouge">prakhar1989/static-site</code>
+(thanks to the author of that image, so I didn’t have to make one
+myself 👏).</p>
+
+<p>Let’ create a deployment for this image, as well as a ClusterIP service
+that exposes it inside the cluster:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>kubectl create deployment static-site <span class="nt">--image</span><span class="o">=</span>prakhar1989/static-site
+deployment.apps/static-site created
+
+<span class="nv">$ </span>kubectl create service clusterip static-site <span class="nt">--tcp</span><span class="o">=</span>80:80
+service/static-site created
+</code></pre></div></div>
+
+<p>As a test that everything is OK, we use <code class="language-plaintext highlighter-rouge">kubectl</code>’s port forwarding to
+access the container and test that web pages are being served:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>kubectl port-forward service/static-site 8080:80
+Forwarding from 127.0.0.1:8080 -&gt; 80
+Forwarding from <span class="o">[</span>::1]:8080 -&gt; 80
+</code></pre></div></div>
+
+<p>Point your browser to <a href="http://localhost:8080">http://localhost:8080</a> and
+you should see the site homepage saying <em>Hello Docker</em>.</p>
+
+<p>Press <code class="language-plaintext highlighter-rouge">^C</code> to stop <code class="language-plaintext highlighter-rouge">kubectl</code>.</p>
+
+<h2 id="access-the-service-via-the-ingress">
+<a class="anchor" href="#access-the-service-via-the-ingress" aria-hidden="true"><span class="octicon octicon-link"></span></a>Access the service via the ingress</h2>
+
+<p>At this point we should be ready to create our
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.19/#ingress-v1-networking-k8s-io">ingress</a> resource, which will tell the ingress
+controller how to forward incoming HTTP requests to our services. First,
+let’s do it over plain HTTP: write the following YAML to a file named
+<code class="language-plaintext highlighter-rouge">ingress.yaml</code>:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">apiVersion</span><span class="pi">:</span> <span class="s">networking.k8s.io/v1</span>
+<span class="na">kind</span><span class="pi">:</span> <span class="s">Ingress</span>
+<span class="na">metadata</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">static-site</span>
+  <span class="na">annotations</span><span class="pi">:</span>
+    <span class="na">nginx.ingress.kubernetes.io/rewrite-target</span><span class="pi">:</span> <span class="s">/</span>
+    <span class="na">kubernetes.io/ingress.class</span><span class="pi">:</span> <span class="s2">"</span><span class="s">nginx"</span>
+<span class="na">spec</span><span class="pi">:</span>
+  <span class="na">rules</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">http</span><span class="pi">:</span>
+        <span class="na">paths</span><span class="pi">:</span>
+          <span class="pi">-</span> <span class="na">path</span><span class="pi">:</span> <span class="s">/static-site</span>
+            <span class="na">pathType</span><span class="pi">:</span> <span class="s">Prefix</span>
+            <span class="na">backend</span><span class="pi">:</span>
+              <span class="na">service</span><span class="pi">:</span>
+                <span class="na">name</span><span class="pi">:</span> <span class="s">static-site</span>
+                <span class="na">port</span><span class="pi">:</span>
+                  <span class="na">number</span><span class="pi">:</span> <span class="m">80</span>
+</code></pre></div></div>
+
+<p>Then, apply it:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>kubectl apply <span class="nt">-f</span> ingress.yaml
+ingress.networking.k8s.io/static-site created
+</code></pre></div></div>
+
+<p>At this point, the ingress is mapping all requests whose paths start
+with <code class="language-plaintext highlighter-rouge">/static-site</code> to our service, while stripping that prefix from the
+URL.  To check that it’s working, ask Minikube for the VM address (don’t
+copy the one from the example below as yours will likely be different):</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>minikube ip
+192.168.39.231
+</code></pre></div></div>
+
+<p>and point your browser to <code class="language-plaintext highlighter-rouge">http://&lt;output of minikube ip&gt;/static-site</code>.
+You should see the same page as before.</p>
+
+<p>Let’s break down the ingress definition. First, it comes with two
+annotations:</p>
+<ul>
+  <li>
+<code class="language-plaintext highlighter-rouge">kubernetes.io/ingress.class: "nginx"</code> controls the association
+between this ingress resource and an ingress controller, which will be
+responsible for routing the requests related to the paths specified in
+the resource. Since we can have multiple ingress controllers in a
+cluster, it is important to explicitly establish a bond between
+ingress resources and controllers.  This annotation clarifies that the
+traffic pertaining to this ingress resource should be handled by the
+ingress controller identified by the <code class="language-plaintext highlighter-rouge">nginx</code> class. The NGINX ingress
+Helm chart marked the installed ingress controller with this class for
+us, so we can simply refer to it in our resources;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">nginx.ingress.kubernetes.io/rewrite-target: /</code> controls URL
+rewriting. Requests coming to the ingress controller for our static
+site will be rooted under <code class="language-plaintext highlighter-rouge">/static-site</code>, but the web-server running
+inside the image we deployed earlier does not know anything about this
+prefix, it expects pages to sit under <code class="language-plaintext highlighter-rouge">/</code>. So we must strip the prefix
+from the path before forwarding the request to the pod. This
+annotations tells the controller to do that.</li>
+</ul>
+
+<p>The <code class="language-plaintext highlighter-rouge">spec</code> part defined the mapping between incoming HTTP requests and
+the services that should handle them. There is a single path in the
+rules, which configures all URL’s starting with <code class="language-plaintext highlighter-rouge">/static-site</code> to be
+forwarded to the service called <code class="language-plaintext highlighter-rouge">static-site</code> and more precisely to its
+port 80.  All other paths does not have a rule, and will be handled by
+the <em>default backend</em> defined by the ingress controller. For the NGINX
+ingress, this will simply return an error 404.</p>
+
+<h3 id="filter-on-host-names">
+<a class="anchor" href="#filter-on-host-names" aria-hidden="true"><span class="octicon octicon-link"></span></a>Filter on host names</h3>
+
+<p>The previous ingress resource only matched incoming requests to services
+using the URL path component. The host name used in the URL, and thus
+sent in the request using the <code class="language-plaintext highlighter-rouge">Host</code> header, was not involved in
+selecting a backend. So, as long as the path matches the specified
+prefix, our <code class="language-plaintext highlighter-rouge">static-site</code> service will get the traffic for all host
+names. We can check for this using <code class="language-plaintext highlighter-rouge">curl</code>:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Access the page using the IP as the hostname, effectively sending</span>
+<span class="c"># a Host header set to the Minikube IP. The actual response is discarded</span>
+<span class="c"># to have a better view of curl debug lines.</span>
+<span class="nv">$ </span>curl <span class="nt">--noproxy</span> <span class="se">\*</span> <span class="nt">-v</span> <span class="nt">-s</span> http://<span class="si">$(</span>minikube ip<span class="si">)</span>/static-site <span class="o">&gt;</span> /dev/null
+<span class="k">*</span>   Trying 192.168.39.231:80...
+<span class="k">*</span> Connected to 192.168.39.231 <span class="o">(</span>192.168.39.231<span class="o">)</span> port 80 <span class="o">(</span><span class="c">#0)</span>
+<span class="o">&gt;</span> GET /static-site HTTP/1.1
+<span class="o">&gt;</span> Host: 192.168.39.231
+<span class="o">&gt;</span> User-Agent: curl/7.73.0
+<span class="o">&gt;</span> Accept: <span class="k">*</span>/<span class="k">*</span>
+<span class="o">&gt;</span> 
+<span class="k">*</span> Mark bundle as not supporting multiuse
+&lt; HTTP/1.1 200 OK
+&lt; Date: Sat, 28 Nov 2020 13:21:39 GMT
+&lt; Content-Type: text/html
+&lt; Content-Length: 2041
+&lt; Connection: keep-alive
+&lt; Last-Modified: Sun, 03 Jan 2016 04:32:16 GMT
+&lt; ETag: <span class="s2">"5688a450-7f9"</span>
+&lt; Accept-Ranges: bytes
+&lt; 
+<span class="o">{</span> <span class="o">[</span>2041 bytes data]
+<span class="k">*</span> Connection <span class="c">#0 to host 192.168.39.231 left intact</span>
+
+<span class="c"># This time we use curl --resolve option to force a</span>
+<span class="c"># chosen hostname to resolve to the Minikube IP. Due to the use of an</span>
+<span class="c"># hostname in the URL, the Host header is set to static-site.local</span>
+<span class="nv">$ </span>curl <span class="nt">--noproxy</span> <span class="se">\*</span> <span class="nt">-v</span> <span class="nt">-s</span> <span class="nt">--resolve</span> static-site.local:80:<span class="si">$(</span>minikube ip<span class="si">)</span> <span class="se">\</span>
+  http://static-site.local/static-site <span class="o">&gt;</span> /dev/null
+<span class="o">&gt;</span>   http://static-site.local/static-site <span class="o">&gt;</span> /dev/null
+<span class="k">*</span> Added static-site.local:80:192.168.39.231 to DNS cache
+<span class="k">*</span> Hostname static-site.local was found <span class="k">in </span>DNS cache
+<span class="k">*</span>   Trying 192.168.39.231:80...
+<span class="k">*</span> Connected to static-site.local <span class="o">(</span>192.168.39.231<span class="o">)</span> port 80 <span class="o">(</span><span class="c">#0)</span>
+<span class="o">&gt;</span> GET /static-site HTTP/1.1
+<span class="o">&gt;</span> Host: static-site.local
+<span class="o">&gt;</span> User-Agent: curl/7.73.0
+<span class="o">&gt;</span> Accept: <span class="k">*</span>/<span class="k">*</span>
+<span class="o">&gt;</span> 
+<span class="k">*</span> Mark bundle as not supporting multiuse
+&lt; HTTP/1.1 200 OK
+&lt; Date: Sat, 28 Nov 2020 13:24:53 GMT
+&lt; Content-Type: text/html
+&lt; Content-Length: 2041
+&lt; Connection: keep-alive
+&lt; Last-Modified: Sun, 03 Jan 2016 04:32:16 GMT
+&lt; ETag: <span class="s2">"5688a450-7f9"</span>
+&lt; Accept-Ranges: bytes
+&lt; 
+<span class="o">{</span> <span class="o">[</span>2041 bytes data]
+<span class="k">*</span> Connection <span class="c">#0 to host static-site.local left intact</span>
+</code></pre></div></div>
+
+<p>As can be seen, the <code class="language-plaintext highlighter-rouge">Host</code> header is different in the two calls, but the
+response was still a 200 with a payload of 2041 bytes in both cases.  In
+the second test, we used <code class="language-plaintext highlighter-rouge">curl</code>’s <code class="language-plaintext highlighter-rouge">--resolve</code> option which causes the
+hostname <code class="language-plaintext highlighter-rouge">static-site.local</code> to resolve to the Minikube IP without the
+need to patch <code class="language-plaintext highlighter-rouge">/etc/hosts</code> or add a DNS entry.</p>
+
+<p><em>Hint: if you prefer using your browser to test the URL’s, there is a
+trick that makes Firefox resolve any domain name to a fixed IP. Open
+Firefox, then type <code class="language-plaintext highlighter-rouge">about:config</code> in the address bar. Dismiss the
+warning message and then use the search box to look up the property
+<code class="language-plaintext highlighter-rouge">network.dns.forceResolve</code>. Place the address printed by  <code class="language-plaintext highlighter-rouge">minikube ip</code>
+in the value field and confirm the change using the <code class="language-plaintext highlighter-rouge">Save </code> button. From
+now on, all addresses opened in Firefox will resolve to the Minikube
+VM address and you can paste URL’s employing our fake domain name.
+Remember to clear the property value when done.</em></p>
+
+<p>Of course, NGINX can perform request filtering based on hostnames. We
+just have to add an <code class="language-plaintext highlighter-rouge">host</code> field to our rules in the ingress definition.
+If we want our site to only be available as <code class="language-plaintext highlighter-rouge">static-site.local</code>, we can
+patch the resource as follows:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">apiVersion</span><span class="pi">:</span> <span class="s">networking.k8s.io/v1</span>
+<span class="na">kind</span><span class="pi">:</span> <span class="s">Ingress</span>
+<span class="na">metadata</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">static-site</span>
+  <span class="na">annotations</span><span class="pi">:</span>
+    <span class="na">nginx.ingress.kubernetes.io/rewrite-target</span><span class="pi">:</span> <span class="s">/</span>
+    <span class="na">kubernetes.io/ingress.class</span><span class="pi">:</span> <span class="s2">"</span><span class="s">nginx"</span>
+<span class="na">spec</span><span class="pi">:</span>
+  <span class="na">rules</span><span class="pi">:</span>
+    <span class="c1"># Note the new host field</span>
+    <span class="pi">-</span> <span class="na">host</span><span class="pi">:</span> <span class="s">static-site.local</span>
+      <span class="na">http</span><span class="pi">:</span>
+        <span class="na">paths</span><span class="pi">:</span>
+          <span class="pi">-</span> <span class="na">path</span><span class="pi">:</span> <span class="s">/static-site</span>
+            <span class="na">pathType</span><span class="pi">:</span> <span class="s">Prefix</span>
+            <span class="na">backend</span><span class="pi">:</span>
+              <span class="na">service</span><span class="pi">:</span>
+                <span class="na">name</span><span class="pi">:</span> <span class="s">static-site</span>
+                <span class="na">port</span><span class="pi">:</span>
+                  <span class="na">number</span><span class="pi">:</span> <span class="m">80</span>
+</code></pre></div></div>
+
+<p>Let’s update the cluster:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>kubectl apply <span class="nt">-f</span> ingress.yaml
+ingress.networking.k8s.io/static-site configured
+</code></pre></div></div>
+
+<p>and repeat out tests with <code class="language-plaintext highlighter-rouge">curl</code>:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>curl <span class="nt">--noproxy</span> <span class="se">\*</span> <span class="nt">-v</span> <span class="nt">-s</span> http://<span class="si">$(</span>minikube ip<span class="si">)</span>/static-site <span class="o">&gt;</span> /dev/null
+<span class="k">*</span>   Trying 192.168.39.231:80...
+<span class="k">*</span> Connected to 192.168.39.231 <span class="o">(</span>192.168.39.231<span class="o">)</span> port 80 <span class="o">(</span><span class="c">#0)</span>
+<span class="o">&gt;</span> GET /static-site HTTP/1.1
+<span class="o">&gt;</span> Host: 192.168.39.231
+<span class="o">&gt;</span> User-Agent: curl/7.73.0
+<span class="o">&gt;</span> Accept: <span class="k">*</span>/<span class="k">*</span>
+<span class="o">&gt;</span> 
+<span class="k">*</span> Mark bundle as not supporting multiuse
+&lt; HTTP/1.1 404 Not Found
+&lt; Date: Sat, 28 Nov 2020 13:33:02 GMT
+&lt; Content-Type: text/html
+&lt; Content-Length: 146
+&lt; Connection: keep-alive
+&lt; 
+<span class="o">{</span> <span class="o">[</span>146 bytes data]
+<span class="k">*</span> Connection <span class="c">#0 to host 192.168.39.231 left intact</span>
+
+curl <span class="nt">--noproxy</span> <span class="se">\*</span> <span class="nt">-v</span> <span class="nt">-s</span> <span class="nt">--resolve</span> static-site.local:80:<span class="si">$(</span>minikube ip<span class="si">)</span> <span class="se">\</span>
+  http://static-site.local/static-site <span class="o">&gt;</span> /dev/null
+<span class="o">&gt;</span>   http://static-site.local/static-site <span class="o">&gt;</span> /dev/null
+<span class="k">*</span> Added static-site.local:80:192.168.39.231 to DNS cache
+<span class="k">*</span> Hostname static-site.local was found <span class="k">in </span>DNS cache
+<span class="k">*</span>   Trying 192.168.39.231:80...
+<span class="k">*</span> Connected to static-site.local <span class="o">(</span>192.168.39.231<span class="o">)</span> port 80 <span class="o">(</span><span class="c">#0)</span>
+<span class="o">&gt;</span> GET /static-site HTTP/1.1
+<span class="o">&gt;</span> Host: static-site.local
+<span class="o">&gt;</span> User-Agent: curl/7.73.0
+<span class="o">&gt;</span> Accept: <span class="k">*</span>/<span class="k">*</span>
+<span class="o">&gt;</span> 
+<span class="k">*</span> Mark bundle as not supporting multiuse
+&lt; HTTP/1.1 200 OK
+&lt; Date: Sat, 28 Nov 2020 13:33:48 GMT
+&lt; Content-Type: text/html
+&lt; Content-Length: 2041
+&lt; Connection: keep-alive
+&lt; Last-Modified: Sun, 03 Jan 2016 04:32:16 GMT
+&lt; ETag: <span class="s2">"5688a450-7f9"</span>
+&lt; Accept-Ranges: bytes
+&lt; 
+<span class="o">{</span> <span class="o">[</span>2041 bytes data]
+<span class="k">*</span> Connection <span class="c">#0 to host static-site.local left intact</span>
+</code></pre></div></div>
+
+<p>Note that this time the request containing the IP in the URL returned
+404, because the ingress is no longer matching the IP with the service.</p>
+
+<h3 id="adding-tls">
+<a class="anchor" href="#adding-tls" aria-hidden="true"><span class="octicon octicon-link"></span></a>Adding TLS</h3>
+
+<p>Until now, we have been using plain HTTP both between the client and the
+ingress and between the ingress and the target service. NGINX can do
+<em>TLS termination</em>, meaning it receives HTTPS requests, performs TLS
+handshake, and then forwards the plain HTTP request to the final service
+and relays back the response.  This way, there is a single point where
+certificates and keys must be provisioned: the ingress controller itself.
+Services can run over plain HTTP, while all external traffic, which
+terminates at the ingress, is secured.</p>
+
+<p>Before we can enable TLS, we must prepare a certificate. This step must
+be performed with care because the ingress seems to be picky about the
+certificates it accepts. In particular, it refuses certificates
+that use the common name to identify the expected host name of the
+server. It pretends that certificates also contain at least one subject
+alternative name, even if the only one is identical to the common name.
+We will first generate an “invalid” certificate without any SAN’s to
+trigger the error, then we’ll create a good certificate with a SAN to
+rectify the situation.</p>
+
+<h3 id="the-bad-certificate">
+<a class="anchor" href="#the-bad-certificate" aria-hidden="true"><span class="octicon octicon-link"></span></a>The “bad” certificate</h3>
+
+<p>Let’s issue a self-signed certificate with OpenSSL (note that the
+private key is stored unencrypted):</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>openssl req <span class="nt">-new</span> <span class="nt">-x509</span> <span class="nt">-nodes</span> <span class="nt">-newkey</span> rsa:2048 <span class="nt">-out</span> tls.crt <span class="nt">-keyout</span> tls.key <span class="se">\</span>
+  <span class="nt">-subj</span> <span class="s1">'/C=IT/O=Local test/CN=static-site.local'</span>
+Generating a RSA private key
+.....................................................................................................................+++++
+..............+++++
+writing new private key to <span class="s1">'tls.key'</span>
+<span class="nt">-----</span>
+</code></pre></div></div>
+
+<p>For the ingress controller to be able to use the certificate and the
+key, we must load them to our cluster. We must use a secret for this
+purpouse, which will then be referenced from the ingress resource.
+<code class="language-plaintext highlighter-rouge">kubectl</code> provides a shortcut command to create a well-formed secret
+suitable for use with TLS:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>kubectl create secret tls static-site <span class="nt">--cert</span><span class="o">=</span>tls.crt <span class="nt">--key</span> tls.key
+secret/static-site created
+</code></pre></div></div>
+
+<p>In order to enable TLS for our ingress, we must edit the resource to add
+a <code class="language-plaintext highlighter-rouge">tls</code> object:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="na">apiVersion</span><span class="pi">:</span> <span class="s">networking.k8s.io/v1</span>
+<span class="na">kind</span><span class="pi">:</span> <span class="s">Ingress</span>
+<span class="na">metadata</span><span class="pi">:</span>
+  <span class="na">name</span><span class="pi">:</span> <span class="s">static-site</span>
+  <span class="na">annotations</span><span class="pi">:</span>
+    <span class="na">nginx.ingress.kubernetes.io/rewrite-target</span><span class="pi">:</span> <span class="s">/</span>
+    <span class="na">kubernetes.io/ingress.class</span><span class="pi">:</span> <span class="s2">"</span><span class="s">nginx"</span>
+<span class="na">spec</span><span class="pi">:</span>
+  <span class="c1"># This is the new stuff</span>
+  <span class="na">tls</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">hosts</span><span class="pi">:</span>
+        <span class="pi">-</span> <span class="s">static-site.local</span>
+      <span class="na">secretName</span><span class="pi">:</span> <span class="s">static-site</span>
+  <span class="c1"># End new stuff</span>
+  <span class="na">rules</span><span class="pi">:</span>
+    <span class="pi">-</span> <span class="na">host</span><span class="pi">:</span> <span class="s">static-site.local</span>
+      <span class="na">http</span><span class="pi">:</span>
+        <span class="na">paths</span><span class="pi">:</span>
+          <span class="pi">-</span> <span class="na">path</span><span class="pi">:</span> <span class="s">/static-site</span>
+            <span class="na">pathType</span><span class="pi">:</span> <span class="s">Prefix</span>
+            <span class="na">backend</span><span class="pi">:</span>
+              <span class="na">service</span><span class="pi">:</span>
+                <span class="na">name</span><span class="pi">:</span> <span class="s">static-site</span>
+                <span class="na">port</span><span class="pi">:</span>
+                  <span class="na">number</span><span class="pi">:</span> <span class="m">80</span>
+</code></pre></div></div>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>kubectl apply <span class="nt">-f</span> ingress.yaml
+ingress.networking.k8s.io/static-site configured
+</code></pre></div></div>
+
+<p>Note that the new <code class="language-plaintext highlighter-rouge">tls</code> object is a list, where each entry defines:</p>
+<ul>
+  <li>
+<code class="language-plaintext highlighter-rouge">hosts</code>: a list of expected host names to which the certificate
+applies. We have set it to be equal to the <code class="language-plaintext highlighter-rouge">host</code> field inside our
+only rule;</li>
+  <li>
+<code class="language-plaintext highlighter-rouge">secretName</code>: the name of a secrets that hold the certificate and key
+for server-side TLS. It’s set to the name of the secret we created
+earlier.</li>
+</ul>
+
+<p>As soon as the new ingress is applied, the controller reconfigures
+itself to enable TLS. However, if we now dump the logs of the ingress
+controller pod:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ POD_NAME</span><span class="o">=</span><span class="si">$(</span>kubectl <span class="nt">-n</span> ingress-nginx get pods <span class="nt">-o</span> <span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{$.items[0].metadata.name}'</span><span class="si">)</span>
+<span class="nv">$ </span>kubectl logs <span class="nt">-n</span> ingress-nginx <span class="s2">"</span><span class="nv">$POD_NAME</span><span class="s2">"</span> | <span class="nb">grep</span> <span class="nt">-i</span> <span class="s1">'Common Name'</span>
+W1128 14:04:04.781934       6 controller.go:1180] Unexpected error validating SSL certificate <span class="s2">"default/static-site"</span> <span class="k">for </span>server <span class="s2">"static-site.local"</span>: x509: certificate relies on legacy Common Name field, use SANs or temporarily <span class="nb">enable </span>Common Name matching with <span class="nv">GODEBUG</span><span class="o">=</span><span class="nv">x509ignoreCN</span><span class="o">=</span>0
+</code></pre></div></div>
+
+<p>Note the error message about the lack of subject alternative names. The
+certificate has been rejected.</p>
+
+<h3 id="the-good-certificate">
+<a class="anchor" href="#the-good-certificate" aria-hidden="true"><span class="octicon octicon-link"></span></a>The “good” certificate</h3>
+
+<p>To create a new certificate with the appropriate SAN extension, we can
+again employ <code class="language-plaintext highlighter-rouge">openssl</code> with the <code class="language-plaintext highlighter-rouge">-addext</code> option:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Generate a new certificate with a SAN of static-site.local</span>
+<span class="nv">$ CN</span><span class="o">=</span>static-site.local
+<span class="nv">$ </span>openssl req <span class="nt">-new</span> <span class="nt">-x509</span> <span class="nt">-nodes</span> <span class="nt">-newkey</span> rsa:2048 <span class="nt">-out</span> tls.crt <span class="nt">-keyout</span> tls.key <span class="se">\</span>
+  <span class="nt">-subj</span> <span class="s2">"/C=IT/O=Local test/CN=</span><span class="nv">$CN</span><span class="s2">"</span> <span class="nt">-addext</span> <span class="s2">"subjectAltName=DNS:</span><span class="nv">$CN</span><span class="s2">"</span>
+Generating a RSA private key
+..............................................................................................+++++
+.........................................+++++
+writing new private key to <span class="s1">'tls.key'</span>
+
+<span class="c"># Check that the certificate does contain the SAN</span>
+<span class="nv">$ </span>openssl x509 <span class="nt">-text</span> <span class="nt">-in</span> tls.crt | <span class="nb">grep</span> <span class="nt">-i</span> <span class="nt">-A1</span> Alternative
+            X509v3 Subject Alternative Name: 
+                DNS:static-site.local
+
+<span class="c"># Replace the secret</span>
+<span class="nv">$ </span>kubectl delete secret/static-site
+secret <span class="s2">"static-site"</span> deleted
+<span class="nv">$ </span>kubectl create secret tls static-site <span class="nt">--cert</span><span class="o">=</span>tls.crt <span class="nt">--key</span> tls.key
+secret/static-site created
+</code></pre></div></div>
+
+<p>If we access the site with <code class="language-plaintext highlighter-rouge">curl</code> now:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>curl <span class="nt">--noproxy</span> <span class="se">\*</span> <span class="nt">-v</span> <span class="nt">-s</span> <span class="nt">-k</span> <span class="nt">--resolve</span> static-site.local:443:<span class="si">$(</span>minikube ip<span class="si">)</span> <span class="se">\</span>
+    https://static-site.local/static-site <span class="o">&gt;</span> /dev/null
+<span class="k">*</span> Added static-site.local:443:192.168.39.231 to DNS cache
+<span class="k">*</span> Hostname static-site.local was found <span class="k">in </span>DNS cache
+<span class="k">*</span>   Trying 192.168.39.231:443...
+<span class="k">*</span> Connected to static-site.local <span class="o">(</span>192.168.39.231<span class="o">)</span> port 443 <span class="o">(</span><span class="c">#0)</span>
+<span class="o">[</span>...redacted...]
+<span class="k">*</span> Server certificate:
+<span class="k">*</span>  subject: <span class="nv">C</span><span class="o">=</span>IT<span class="p">;</span> <span class="nv">O</span><span class="o">=</span>Local <span class="nb">test</span><span class="p">;</span> <span class="nv">CN</span><span class="o">=</span>static-site.local
+<span class="k">*</span>  start <span class="nb">date</span>: Nov 28 17:56:48 2020 GMT
+<span class="k">*</span>  expire <span class="nb">date</span>: Dec 28 17:56:48 2020 GMT
+<span class="k">*</span>  issuer: <span class="nv">C</span><span class="o">=</span>IT<span class="p">;</span> <span class="nv">O</span><span class="o">=</span>Local <span class="nb">test</span><span class="p">;</span> <span class="nv">CN</span><span class="o">=</span>static-site.local
+<span class="k">*</span>  SSL certificate verify result: self signed certificate <span class="o">(</span>18<span class="o">)</span>, continuing anyway.
+<span class="o">[</span>..redacted...]
+&lt; HTTP/2 200 
+&lt; <span class="nb">date</span>: Sat, 28 Nov 2020 18:05:56 GMT
+&lt; content-type: text/html
+&lt; content-length: 2041
+&lt; last-modified: Sun, 03 Jan 2016 04:32:16 GMT
+&lt; etag: <span class="s2">"5688a450-7f9"</span>
+&lt; accept-ranges: bytes
+&lt; strict-transport-security: max-age<span class="o">=</span>15724800<span class="p">;</span> includeSubDomains
+&lt; 
+<span class="o">{</span> <span class="o">[</span>2041 bytes data]
+<span class="k">*</span> Connection <span class="c">#0 to host static-site.local left intact</span>
+</code></pre></div></div>
+
+<p>The response is a 200 with the expected payload size, and the
+certificate dump clearly reports the data for our certificate.  Note
+that the <code class="language-plaintext highlighter-rouge">-k</code> option was used to tell <code class="language-plaintext highlighter-rouge">curl</code> to accept insecure
+certificates due to self-signing.</p>
+
+<h2 id="tcp-passthrough">
+<a class="anchor" href="#tcp-passthrough" aria-hidden="true"><span class="octicon octicon-link"></span></a>TCP passthrough</h2>
+
+<p>Ingresses are designed to handle HTTP(S) traffic, that’s why they have
+builtin features like path matching. However, the NGINX ingress does
+support TCP passthrough: it can listen on a specific port and forward
+the plain TCP connection to a target service. This way it’s possible to
+use it to control non-HTTP traffic towards services.</p>
+
+<p>The geneal way to enable this feature is explained <a href="https://kubernetes.github.io/ingress-nginx/user-guide/exposing-tcp-udp-services/">in this
+page</a> and involves config maps and command line
+options. It’s worth reading, but thanks to the Helm chart there is a
+much easier way to do that: we can simply add entries to the top-level
+<code class="language-plaintext highlighter-rouge">tcp</code> value and let the chart take care of the details. Basically, for
+each port to forward, we must add a key/value entry to <code class="language-plaintext highlighter-rouge">tcp</code> with the
+following format:</p>
+<ul>
+  <li>the key is a string representing the host port we want to listen on,
+in decimal form (i.e. <code class="language-plaintext highlighter-rouge">"8123"</code>);</li>
+  <li>the value is a string like <code class="language-plaintext highlighter-rouge">"namespace/serviceName:servicePort"</code>,
+defining the namespace and the name of the service that will receive
+the traffic, as well as the port (i.e. <code class="language-plaintext highlighter-rouge">"default/static-site:80"</code>).</li>
+</ul>
+
+<p>Let’s use this feature to expose our static site directly via port 8123.
+It is not required to uninstall and reinstall the ingress Helm chart to
+set the new values: <code class="language-plaintext highlighter-rouge">helm</code> has an <code class="language-plaintext highlighter-rouge">upgrade</code> command to upgrade a release
+while accepting additional values.  All other values we specified at
+install time are kept thanks to <code class="language-plaintext highlighter-rouge">--reuse-values</code>:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>helm upgrade <span class="nt">-n</span> ingress-nginx ingress-nginx <span class="nt">--reuse-values</span> <span class="se">\</span>
+    <span class="nt">--set</span> <span class="s2">"tcp.8123=default/static-site:80"</span>  ingress-nginx/ingress-nginx
+Release <span class="s2">"ingress-nginx"</span> has been upgraded. Happy Helming!
+<span class="o">[</span>...redacted...]
+</code></pre></div></div>
+
+<p>Give it a few seconds to settle, then try:</p>
+
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>curl <span class="nt">--noproxy</span> <span class="se">\*</span> <span class="nt">-v</span> <span class="nt">-s</span> http://<span class="si">$(</span>minikube ip<span class="si">)</span>:8123/ <span class="o">&gt;</span> /dev/null
+<span class="k">*</span>   Trying 192.168.39.231:8123...
+<span class="k">*</span> Connected to 192.168.39.231 <span class="o">(</span>192.168.39.231<span class="o">)</span> port 8123 <span class="o">(</span><span class="c">#0)</span>
+<span class="o">&gt;</span> GET / HTTP/1.1
+<span class="o">&gt;</span> Host: 192.168.39.231:8123
+<span class="o">&gt;</span> User-Agent: curl/7.73.0
+<span class="o">&gt;</span> Accept: <span class="k">*</span>/<span class="k">*</span>
+<span class="o">&gt;</span> 
+<span class="k">*</span> Mark bundle as not supporting multiuse
+&lt; HTTP/1.1 200 OK
+&lt; Server: nginx/1.9.9
+&lt; Date: Sat, 28 Nov 2020 19:38:13 GMT
+&lt; Content-Type: text/html
+&lt; Content-Length: 2041
+&lt; Last-Modified: Sun, 03 Jan 2016 04:32:16 GMT
+&lt; Connection: keep-alive
+&lt; ETag: <span class="s2">"5688a450-7f9"</span>
+&lt; Accept-Ranges: bytes
+&lt; 
+<span class="o">{</span> <span class="o">[</span>2041 bytes data]
+<span class="k">*</span> Connection <span class="c">#0 to host 192.168.39.231 left intact</span>
+</code></pre></div></div>
+
+<p>And the usual site page is back, served directly from the webserver
+running <em>inside</em> the container.</p>
+
+<h2 id="thats-all">
+<a class="anchor" href="#thats-all" aria-hidden="true"><span class="octicon octicon-link"></span></a>That’s all</h2>
+
+<p>NGINX and the NGINX K8S ingress have much more features that were shown
+here. But these instructions should be enough to get you started with
+ingresses. Thanks for reading.</p>
+
+<!-- Links -->
+
+  </div>
+
+  <script src="https://utteranc.es/client.js"
+     repo="binary-manu/binary-is-better"
+     issue-term="pathname"
+     label="comment"
+     theme="preferred-color-scheme"
+     crossorigin="anonymous"
+     async>
+  </script>
+
+  <a class="u-url" href="/binary-is-better/kubernetes/k8s-nginx-ingress" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/binary-is-better/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Binary is better</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Emanuele Giacomelli</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <a rel="license" href="http://creativecommons.org/licenses/by/3.0/">
+          <img alt="Creative Commons License" style="border-width:0"
+            src="https://i.creativecommons.org/l/by/3.0/88x31.png">
+        </a><ul class="social-media-list"></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Personal notes about my software developer things</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
