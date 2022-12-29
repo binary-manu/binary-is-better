@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>16-bit holidays! | Binary is better</title>
+<meta name="generator" content="Jekyll v4.3.1" />
+<meta property="og:title" content="16-bit holidays!" />
+<meta name="author" content="Emanuele Giacomelli" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="What could be better to spice up your winter holidays than some 16 bit x86 assembly? As an exercise for removing the rust from my assembly-fu, I wrote a small Base64 decoder purely in 8086 assembly code:" />
+<meta property="og:description" content="What could be better to spice up your winter holidays than some 16 bit x86 assembly? As an exercise for removing the rust from my assembly-fu, I wrote a small Base64 decoder purely in 8086 assembly code:" />
+<link rel="canonical" href="https://binary-manu.github.io/binary-is-better/development/16-bit-holidays" />
+<meta property="og:url" content="https://binary-manu.github.io/binary-is-better/development/16-bit-holidays" />
+<meta property="og:site_name" content="Binary is better" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2022-12-29T00:00:00+01:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="16-bit holidays!" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Emanuele Giacomelli"},"dateModified":"2022-12-29T00:00:00+01:00","datePublished":"2022-12-29T00:00:00+01:00","description":"What could be better to spice up your winter holidays than some 16 bit x86 assembly? As an exercise for removing the rust from my assembly-fu, I wrote a small Base64 decoder purely in 8086 assembly code:","headline":"16-bit holidays!","mainEntityOfPage":{"@type":"WebPage","@id":"https://binary-manu.github.io/binary-is-better/development/16-bit-holidays"},"url":"https://binary-manu.github.io/binary-is-better/development/16-bit-holidays"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/binary-is-better/assets/main.css"><link type="application/atom+xml" rel="alternate" href="https://binary-manu.github.io/binary-is-better/feed.xml" title="Binary is better" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/binary-is-better/">Binary is better</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/binary-is-better/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">16-bit holidays!</h1>
+    <p class="post-meta">
+      
+      <time class="dt-published" datetime="2022-12-29T00:00:00+01:00" itemprop="datePublished">Published Dec 29, 2022
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <ul id="toc" class="section-nav">
+<li class="toc-entry toc-h2"><a href="#how-to-assemble">How to assemble</a></li>
+<li class="toc-entry toc-h2"><a href="#how-to-run">How to run</a></li>
+<li class="toc-entry toc-h2"><a href="#the-code">The code</a></li>
+<li class="toc-entry toc-h2"><a href="#sample-output">Sample output</a></li>
+</ul><p>What could be better to spice up your winter holidays than some 16 bit
+x86 assembly? As an exercise for removing the rust from my assembly-fu,
+I wrote a small Base64 decoder purely in 8086 assembly code:</p>
+
+<ul>
+  <li>it decodes a well-encoded message 4 bytes at at time and prints 3
+characters to the screen;</li>
+  <li>handles padding <code class="language-plaintext highlighter-rouge">=</code>s;</li>
+  <li>it does not handle faulty encodings;</li>
+  <li>should use opcodes from the original 8086 only (unless I got it
+wrong);</li>
+  <li>real mode code, meant to be embedded into a Master Boot Record;</li>
+  <li>video output is done using the BIOS via <code class="language-plaintext highlighter-rouge">int 10h</code>.</li>
+</ul>
+
+<h2 id="how-to-assemble">
+<a class="anchor" href="#how-to-assemble" aria-hidden="true"><span class="octicon octicon-link"></span></a>How to assemble</h2>
+
+<p>You’ll need the <a href="https://flatassembler.net/">Flat Assembler (<code class="language-plaintext highlighter-rouge">fasm</code>)</a> to assemble the program.
+With that installed, just run:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>fasm base64.s
+</code></pre></div></div>
+
+<p>to get <code class="language-plaintext highlighter-rouge">base64.bin</code> as output. The file is already formatted to look
+like a valid MBR: it’s 512 bytes long and ends with <code class="language-plaintext highlighter-rouge">55 AA</code>, so it can
+be run directly using an emulator like <code class="language-plaintext highlighter-rouge">bochs</code> or <code class="language-plaintext highlighter-rouge">qemu</code>.</p>
+
+<h2 id="how-to-run">
+<a class="anchor" href="#how-to-run" aria-hidden="true"><span class="octicon octicon-link"></span></a>How to run</h2>
+
+<p>Once compiled, the simplest way to try it out is to have <code class="language-plaintext highlighter-rouge">qemu</code> run it
+as if it was a floppy image. It is obviously too small to be a full
+floppy, but <code class="language-plaintext highlighter-rouge">qemu</code> does not complain and we do no try to read additional
+sectors:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>qemu-system-x86_64 <span class="nt">-fda</span> base64.bin
+</code></pre></div></div>
+
+<p>What does it print? Well, why don’t you try it for yourself? But if you
+are in a hurry, there is a picture of it at the end of the page.</p>
+
+<p>Of course, you can change the message and rebuild.</p>
+
+<h2 id="the-code">
+<a class="anchor" href="#the-code" aria-hidden="true"><span class="octicon octicon-link"></span></a>The code</h2>
+
+<div class="language-nasm highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">; A base64 decoder, written in 8086 assembly language.</span>
+<span class="c1">; Assemble using the Flat Assembler (https://flatassembler.net/)</span>
+
+<span class="c1">; Emit a raw binary file, and arrange for labels to start at 0</span>
+            <span class="nf">format</span>  <span class="nv">binary</span>
+            <span class="nf">org</span>     <span class="mi">0</span>
+
+<span class="c1">; Entry point</span>
+<span class="c1">; BIOS loads us at 0x7C00, but we don't know the exact segment/offset combo:</span>
+<span class="c1">; it could be 07C0:0000, 0000:7C00 or any other equivalent form.</span>
+<span class="c1">; So the program lives at [0x7C00, 0x7DFF].</span>
+<span class="nl">start:</span>
+
+<span class="c1">; Place the stack at [0x7E00, 0x7FFF) and enable interrupts</span>
+            <span class="nf">mov</span>     <span class="nb">ax</span><span class="p">,</span> <span class="mh">07E0h</span>
+            <span class="nf">mov</span>     <span class="nb">ss</span><span class="p">,</span> <span class="nb">ax</span>
+            <span class="nf">mov</span>     <span class="nb">sp</span><span class="p">,</span> <span class="mh">0200h</span>
+            <span class="nf">sti</span>
+
+<span class="c1">; Jump to the label below while normalizing the segment/offset pair</span>
+<span class="c1">; so that effective addresses are correct w.r.t. "org"</span>
+            <span class="nf">mov</span>     <span class="nb">ax</span><span class="p">,</span> <span class="mh">07C0h</span>
+            <span class="nf">mov</span>     <span class="nb">ds</span><span class="p">,</span> <span class="nb">ax</span>     <span class="c1">; init data segments</span>
+            <span class="nf">mov</span>     <span class="nb">es</span><span class="p">,</span> <span class="nb">ax</span>     <span class="c1">; ...</span>
+            <span class="nf">push</span>    <span class="nb">ax</span>
+            <span class="nf">mov</span>     <span class="nb">ax</span><span class="p">,</span> <span class="err">@</span><span class="nv">f</span>
+            <span class="nf">push</span>    <span class="nb">ax</span>
+            <span class="nf">retf</span>
+            
+<span class="err">@@:</span>
+            <span class="nf">mov</span>     <span class="nb">si</span><span class="p">,</span> <span class="nv">msg</span>
+
+<span class="c1">; "chunk" processes 4 bytes of base64 data, yielding 3 characters            </span>
+<span class="nl">chunk:</span>
+            <span class="c1">; End of string?</span>
+            <span class="nf">cmp</span>     <span class="kt">byte</span> <span class="p">[</span><span class="nb">si</span><span class="p">],</span> <span class="mi">0</span>
+            <span class="nf">je</span>      <span class="nv">endloop</span>
+            <span class="nf">xor</span>     <span class="nb">bx</span><span class="p">,</span> <span class="nb">bx</span>
+            <span class="nf">mov</span>     <span class="nb">cx</span><span class="p">,</span> <span class="mi">4</span>
+            <span class="nf">mov</span>     <span class="nb">di</span><span class="p">,</span> <span class="nv">c1</span>
+            <span class="c1">; Initially mark c3 and c4 as padded</span>
+            <span class="nf">mov</span>     <span class="kt">word</span> <span class="p">[</span><span class="nv">c3</span><span class="p">],</span> <span class="mh">0FFFFh</span>
+            
+<span class="nl">b64Char:</span>
+            <span class="nf">lodsb</span>
+            <span class="c1">; If we read a =, the chunk is padded and there</span>
+            <span class="c1">; are no more bits to read.</span>
+            <span class="nf">cmp</span>     <span class="nb">al</span><span class="p">,</span> <span class="s">'='</span>
+            <span class="nf">je</span>      <span class="nv">printer</span>
+            <span class="nf">mov</span>     <span class="nb">bl</span><span class="p">,</span> <span class="nb">al</span>
+            <span class="nf">mov</span>     <span class="nb">al</span><span class="p">,</span> <span class="p">[</span><span class="nb">bx</span> <span class="o">+</span> <span class="nv">base64</span><span class="p">]</span>
+            <span class="nf">stosb</span>
+
+            <span class="nf">loop</span>    <span class="nv">b64Char</span>
+            
+<span class="c1">; As soon as we get here, we have read 4 b64 characters and</span>
+<span class="c1">; placed them into c1, c2, c3, c4. Only the least significant</span>
+<span class="c1">; 6 bits for each cX are used. But for c3 and c4, if the MSB</span>
+<span class="c1">; is set it means there is no character because the block was</span>
+<span class="c1">; padded.</span>
+<span class="c1">; Visually: O = clear bit, I = set bit</span>
+<span class="c1">;           1/2/3 = bit belongs to decoded char 1/2/3</span>
+<span class="c1">; c1 = OO111111</span>
+<span class="c1">; c2 = OO112222</span>
+<span class="c1">; c3 = OO222233 | IIIIIIII (padding)</span>
+<span class="c1">; c4 = OO333333 | IIIIIIII (padding)</span>
+<span class="nl">printer:</span>
+            <span class="c1">; Reassemble decoded character 1 from c1 and c2</span>
+            <span class="nf">mov</span>     <span class="nb">cx</span><span class="p">,</span> <span class="mi">2</span>
+            <span class="nf">mov</span>     <span class="nb">ax</span><span class="p">,</span> <span class="kt">word</span> <span class="p">[</span><span class="nv">c1</span><span class="p">]</span>       <span class="c1">; also read c2</span>
+            <span class="nf">xchg</span>    <span class="nb">al</span><span class="p">,</span> <span class="nb">ah</span>
+            <span class="nf">shl</span>     <span class="nb">al</span><span class="p">,</span> <span class="nb">cl</span>
+            <span class="nf">mov</span>     <span class="nb">cl</span><span class="p">,</span> <span class="mi">6</span>
+            <span class="nf">shr</span>     <span class="nb">ax</span><span class="p">,</span> <span class="nb">cl</span>
+            <span class="nf">call</span>    <span class="nv">print_char</span>
+            
+            <span class="c1">; Reassemble decoded character 2 from c2 and c3,</span>
+            <span class="c1">; but only if we have a c3</span>
+            <span class="nf">test</span>    <span class="kt">byte</span> <span class="p">[</span><span class="nv">c3</span><span class="p">],</span> <span class="mh">80h</span>
+            <span class="nf">jnz</span>     <span class="nv">endloop</span>
+            
+            <span class="nf">mov</span>     <span class="nb">cl</span><span class="p">,</span> <span class="mi">4</span>
+            <span class="nf">mov</span>     <span class="nb">al</span><span class="p">,</span> <span class="p">[</span><span class="nv">c2</span><span class="p">]</span>
+            <span class="nf">shl</span>     <span class="nb">al</span><span class="p">,</span> <span class="nb">cl</span>
+            <span class="nf">mov</span>     <span class="nb">ah</span><span class="p">,</span> <span class="p">[</span><span class="nv">c3</span><span class="p">]</span>
+            <span class="nf">shr</span>     <span class="nb">cl</span><span class="p">,</span> <span class="mi">1</span>
+            <span class="nf">shr</span>     <span class="nb">ah</span><span class="p">,</span> <span class="nb">cl</span>
+            <span class="nf">or</span>      <span class="nb">al</span><span class="p">,</span> <span class="nb">ah</span>
+            <span class="nf">call</span>    <span class="nv">print_char</span>
+            
+            <span class="c1">; Reassemble decoded character 3 from c3 and c4,</span>
+            <span class="c1">; but only if we have a c4</span>
+            <span class="nf">test</span>    <span class="kt">byte</span> <span class="p">[</span><span class="nv">c4</span><span class="p">],</span> <span class="mh">80h</span>
+            <span class="nf">jnz</span>     <span class="nv">endloop</span>
+            
+            <span class="nf">mov</span>     <span class="nb">ax</span><span class="p">,</span> <span class="kt">word</span> <span class="p">[</span><span class="nv">c3</span><span class="p">]</span>       <span class="c1">; also read c4</span>
+            <span class="nf">xchg</span>    <span class="nb">al</span><span class="p">,</span> <span class="nb">ah</span>
+            <span class="nf">shl</span>     <span class="nb">al</span><span class="p">,</span> <span class="nb">cl</span>
+            <span class="nf">shr</span>     <span class="nb">ax</span><span class="p">,</span> <span class="nb">cl</span>
+            <span class="nf">call</span>    <span class="nv">print_char</span>
+            
+            <span class="nf">jmp</span>     <span class="nb">ch</span><span class="nv">unk</span>
+            
+<span class="nl">endloop:</span>
+            <span class="nf">hlt</span>
+            <span class="nf">jmp</span>     <span class="nv">endloop</span>
+            
+<span class="c1">; Put print boilerplate in a procedure</span>
+<span class="c1">; It expects the characters in AL and trashes AH, BH</span>
+<span class="nl">print_char:</span>
+            <span class="nf">push</span>    <span class="nb">cx</span>
+            <span class="nf">xor</span>     <span class="nb">bh</span><span class="p">,</span> <span class="nb">bh</span>
+            <span class="nf">xor</span>     <span class="nb">cx</span><span class="p">,</span> <span class="nb">cx</span>
+            <span class="nf">mov</span>     <span class="nb">ah</span><span class="p">,</span> <span class="mh">0Eh</span>
+            <span class="nf">int</span>     <span class="mh">10h</span>
+            <span class="nf">pop</span>     <span class="nb">cx</span>
+            <span class="nf">retn</span>
+
+<span class="c1">; Message to decode</span>
+<span class="nf">msg</span>         <span class="nv">db</span>      <span class="s">"SGFwcHkgaG9saWRheXMhISE="</span><span class="p">,</span> <span class="mi">0</span>
+
+<span class="c1">; Table converting ASCII characters to their base64 group of 6 bits.</span>
+<span class="c1">; It starts at the lowest used character (+), that's why we use "virtual"</span>
+<span class="c1">; to adjust the offest below.</span>
+<span class="nf">chartab</span>     <span class="nv">db</span>      <span class="mi">62</span>                                                  <span class="c1">; +</span>
+            <span class="nf">rb</span>      <span class="mi">3</span>
+            <span class="kd">db</span>      <span class="mi">63</span>                                                  <span class="c1">; /</span>
+            <span class="kd">db</span>      <span class="mi">52</span><span class="p">,</span> <span class="mi">53</span><span class="p">,</span> <span class="mi">54</span><span class="p">,</span> <span class="mi">55</span><span class="p">,</span> <span class="mi">56</span><span class="p">,</span> <span class="mi">57</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">59</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">61</span>              <span class="c1">; 0-9</span>
+            <span class="nf">rb</span>      <span class="mi">7</span>
+            <span class="kd">db</span>      <span class="mi">0</span><span class="p">,</span>  <span class="mi">1</span><span class="p">,</span>  <span class="mi">2</span><span class="p">,</span>  <span class="mi">3</span><span class="p">,</span>  <span class="mi">4</span><span class="p">,</span>  <span class="mi">5</span><span class="p">,</span>  <span class="mi">6</span><span class="p">,</span>  <span class="mi">7</span><span class="p">,</span>  <span class="mi">8</span><span class="p">,</span>  <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">12</span>   <span class="c1">; A-Z</span>
+            <span class="kd">db</span>      <span class="mi">13</span><span class="p">,</span> <span class="mi">14</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">21</span><span class="p">,</span> <span class="mi">22</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">24</span><span class="p">,</span> <span class="mi">25</span>  <span class="c1">; ...</span>
+            <span class="nf">rb</span>      <span class="mi">6</span>
+            <span class="kd">db</span>      <span class="mi">26</span><span class="p">,</span> <span class="mi">27</span><span class="p">,</span> <span class="mi">28</span><span class="p">,</span> <span class="mi">29</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">31</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">34</span><span class="p">,</span> <span class="mi">35</span><span class="p">,</span> <span class="mi">36</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">38</span>  <span class="c1">; a-z</span>
+            <span class="kd">db</span>      <span class="mi">39</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">42</span><span class="p">,</span> <span class="mi">43</span><span class="p">,</span> <span class="mi">44</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">46</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">48</span><span class="p">,</span> <span class="mi">49</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">51</span>  <span class="c1">; ...</span>
+
+<span class="c1">; The first used char is + (43)</span>
+            <span class="nf">virtual</span> <span class="nv">at</span> <span class="nb">ch</span><span class="nv">artab</span> <span class="o">-</span> <span class="s">'+'</span>
+<span class="nf">base64</span>      <span class="nv">db</span>      <span class="nv">?</span>
+            <span class="nf">end</span>     <span class="nv">virtual</span>
+
+<span class="c1">; Base64 bytes under examination</span>
+<span class="c1">; Must be word-aligned, because we read them as words in some cases</span>
+            <span class="nf">align</span>   <span class="mi">2</span>
+<span class="nf">c1</span>          <span class="nv">db</span>      <span class="nv">?</span>
+<span class="nf">c2</span>          <span class="nv">db</span>      <span class="nv">?</span>
+<span class="nf">c3</span>          <span class="nv">db</span>      <span class="nv">?</span>
+<span class="nf">c4</span>          <span class="nv">db</span>      <span class="nv">?</span>
+
+<span class="c1">; Pad the program to 510 bytes, and append the MBR signature at the end.</span>
+<span class="c1">; This makes it a proper MBR that can be executed by BIOS.</span>
+            <span class="nf">rb</span>      <span class="mi">510</span> <span class="o">-</span> <span class="kc">$</span>
+            <span class="kd">db</span>      <span class="mh">055h</span>
+            <span class="kd">db</span>      <span class="mh">0AAh</span>
+
+</code></pre></div></div>
+
+<h2 id="sample-output">
+<a class="anchor" href="#sample-output" aria-hidden="true"><span class="octicon octicon-link"></span></a>Sample output</h2>
+
+<p><img src="/binary-is-better/assets/my/img/base64.png" alt="Output"></p>
+
+
+  </div>
+
+  <script src="https://utteranc.es/client.js"
+     repo="binary-manu/binary-is-better"
+     issue-term="pathname"
+     label="comment"
+     theme="preferred-color-scheme"
+     crossorigin="anonymous"
+     async>
+  </script>
+
+  <a class="u-url" href="/binary-is-better/development/16-bit-holidays" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/binary-is-better/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Binary is better</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Emanuele Giacomelli</li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <a rel="license" href="http://creativecommons.org/licenses/by/3.0/">
+          <img alt="Creative Commons License" style="border-width:0"
+            src="https://i.creativecommons.org/l/by/3.0/88x31.png">
+        </a><ul class="social-media-list"></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Personal notes about my software developer things</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
