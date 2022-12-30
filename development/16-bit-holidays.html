@@ -44,6 +44,7 @@
     <h1 class="post-title p-name" itemprop="name headline">16-bit holidays!</h1>
     <p class="post-meta">
       
+        <time class="dt-published" datetime="2022-12-30T12:39:00+01:00" itemprop="datePublished">Updated&nbsp;&nbsp; Dec 30, 2022 12:39 -- Added missing `cld` and `cli`</time><br>
       <time class="dt-published" datetime="2022-12-29T00:00:00+01:00" itemprop="datePublished">Published Dec 29, 2022
       </time></p>
   </header>
@@ -115,6 +116,8 @@ are in a hurry, there is a picture of it at the end of the page.</p>
 <span class="nl">start:</span>
 
 <span class="c1">; Place the stack at [0x7E00, 0x7FFF) and enable interrupts</span>
+            <span class="nf">cli</span>
+            <span class="nf">cld</span>
             <span class="nf">mov</span>     <span class="nb">ax</span><span class="p">,</span> <span class="mh">07E0h</span>
             <span class="nf">mov</span>     <span class="nb">ss</span><span class="p">,</span> <span class="nb">ax</span>
             <span class="nf">mov</span>     <span class="nb">sp</span><span class="p">,</span> <span class="mh">0200h</span>
