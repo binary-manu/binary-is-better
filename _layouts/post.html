@@ -10,9 +10,9 @@ toc: true
       {% for upd in page.updates %}
         <time class="dt-published" datetime="{{ upd.date | date_to_xmlschema }}" itemprop="datePublished">
           {%- assign date_format = site.minima.date_format | default: "%b %-d, %Y %H:%M" -%}
-        Updated&nbsp;&nbsp; {{ upd.date | date: date_format }} -- {{ upd.note }}
+        Updated&nbsp;&nbsp; {{ upd.date | date: date_format }} -- {{ upd.note -}}
         </time><br>
-      {% endfor %}
+      {%- endfor %}
       <time class="dt-published" datetime="{{ page.date | date_to_xmlschema }}" itemprop="datePublished">
         {%- assign date_format = site.minima.date_format | default: "%b %-d, %Y" -%}
         Published {{ page.date | date: date_format }}
