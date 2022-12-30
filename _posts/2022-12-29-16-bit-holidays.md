@@ -2,6 +2,9 @@
 # vi: set tw=72 et sw=2 sts=-1 autoindent fo=troqan spelllang=en:
 title: 16-bit holidays!
 category: Development
+updates:
+  - date: 2022-12-30 12:39
+    note: Added missing `cld` and `cli`
 ---
 
 What could be better to spice up your winter holidays than some 16 bit

@@ -12,6 +12,8 @@
 start:
 
 ; Place the stack at [0x7E00, 0x7FFF) and enable interrupts
+            cli
+            cld
             mov     ax, 07E0h
             mov     ss, ax
             mov     sp, 0200h
